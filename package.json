@@ -1,0 +1,12 @@
+{
+  "name": "bb-schedule",
+  "version": "0.1.0",
+  "description": "BestBrains weekly schedule generation, rebuilt as code (Generate next week). Dry run compares only; never writes.",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dryrun": "node src/run.js --mode dry-run",
+    "live": "node src/run.js --mode live"
+  },
+  "dependencies": { "googleapis": "^144.0.0" }
+}

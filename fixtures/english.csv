@@ -1,0 +1,46 @@
+Level,Exam,week of the year
+JrBg,MT,N
+JrBg,FT,Z
+SrBg,MT1,I
+SrBg,MT2,Q
+SrBg,FT,Z
+JrR,MT,M
+JrR,FT,Z
+SrR,MT,N
+SrR,FT,Z
+MrR,MT,K
+MrR,FT,Z
+F1,MT1,I
+F1,MT2,Q
+F1,FT,Z
+G1,MT1,I
+G1,MT2,Q
+G1,FT,Z
+H1,MT1,I
+H1,MT2,Q
+H1,FT,Z
+I1,MT1,I
+I1,MT2,Q
+I1,FT,Z
+J1,MT1,I
+J1,MT2,Q
+J1,FT,Z
+K1,MT1,I
+K1,MT2,Q
+K1,FT,Z
+L1,MT1,F
+L1,MT2,L
+L1,Novel Out of My Mind,G-M
+L1,FT,Z
+M1,MT1,I
+M1,MT2,Q
+M1,Novel Freak the Mighty,J-R
+M1,FT,Z
+N1,MT1,I
+N1,MT2,P
+N1,Novel Holes,J-P
+N1,FT,Z
+O1,MT1,J
+O1,Novel A Night Divided,K-P
+O1,MT2,Q
+O1,FT,Z
