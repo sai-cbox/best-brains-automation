@@ -19,18 +19,19 @@ function compareCell(claudeCell, n8nCell) {
   la.forEach((x, i) => {
     const y = lb[i];
     if (x === y) return;
-    if (stripParens(x) === stripParens(y)) reasons.add('note-in-brackets');
+    if (y.startsWith(x + ' ') || y.startsWith(x + '\n')) reasons.add('staff-added-text');
+    else if (stripParens(x) === stripParens(y)) reasons.add('note-in-brackets');
     else if (x.replace(/ RVW/, '') === y.replace(/ RVW/, '')) reasons.add('rvw-prefix');
     else if (x.split(' ').slice(0, 3).join(' ') === y.split(' ').slice(0, 3).join(' ')) reasons.add('test-or-score-text');
     else reasons.add('level-or-chapter');
   });
-  const order = ['level-or-chapter', 'test-or-score-text', 'rvw-prefix', 'note-in-brackets'];
+  const order = ['level-or-chapter', 'test-or-score-text', 'rvw-prefix', 'note-in-brackets', 'staff-added-text'];
   const reason = order.find(r => reasons.has(r)) || 'other';
   return { status: 'differs', reason, detail: `claude: ${JSON.stringify(a)} | n8n: ${JSON.stringify(b)}` };
 }
 
 /** Compare per student (matched by row number, never by name). */
-function compareRun({ center, runId, claudeRows, n8nRows, headerDate }) {
+function compareRun({ center, runId, claudeRows, n8nRows, headerDate, compareColour = true }) {
   const n8nByRow = new Map(n8nRows.map(r => [r.row, r]));
   const rows = claudeRows.map(c => {
     const n = n8nByRow.get(c.row);
@@ -38,7 +39,8 @@ function compareRun({ center, runId, claudeRows, n8nRows, headerDate }) {
     const cmp = compareCell(c.next_week_log, n.cell);
     return { row: c.row, ...cmp, claude: c.next_week_log, n8n: n.cell, colourClaude: !!c.needs_color, colourN8n: n.colour === 'cyan' };
   });
-  const colourDiffs = rows.filter(r => r.status === 'match' && r.colourClaude !== r.colourN8n).length;
+  // Colour is only meaningful right after n8n writes; staff clear cyan flags later, so past weeks skip it.
+  const colourDiffs = compareColour ? rows.filter(r => r.status === 'match' && r.colourClaude !== r.colourN8n).length : 0;
   const matched = rows.filter(r => r.status === 'match').length;
   const byReason = {};
   rows.filter(r => r.status === 'differs').forEach(r => { byReason[r.reason] = (byReason[r.reason] || 0) + 1; });

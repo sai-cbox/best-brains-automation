@@ -1,0 +1,13 @@
+# Without Docker: copy the project to /opt/bb-schedule, npm install --omit=dev, put the variables in /etc/bb-dashboard.env
+[Unit]
+Description=Claude vs n8n dry-run dashboard
+After=network-online.target
+[Service]
+WorkingDirectory=/opt/bb-schedule
+EnvironmentFile=/etc/bb-dashboard.env
+Environment=PORT=8091 BACKFILL_WEEKS=6 GOOGLE_APPLICATION_CREDENTIALS=/etc/bb-google-sa.json
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+User=bb
+[Install]
+WantedBy=multi-user.target

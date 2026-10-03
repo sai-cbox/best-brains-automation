@@ -1,3 +1,5 @@
 node_modules
 reports
-*.json.key
+deploy/.env
+deploy/google_sa.json
+*.key

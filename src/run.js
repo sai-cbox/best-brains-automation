@@ -35,7 +35,7 @@ async function waitForOutput({ source, sheetId, tab, outText, firstGrid, waitMs,
 }
 function subtractWeek(text) { const [m, d, y] = text.split('/').map(Number); const t = new Date(y, m - 1, d); t.setDate(t.getDate() - 7); return `${String(t.getMonth() + 1).padStart(2, '0')}/${String(t.getDate()).padStart(2, '0')}/${t.getFullYear()}`; }
 
-async function runCenter({ center, source, sink, results, reportDir, forceMode, inputDate, waitForN8n, waitMs = 15 * 60e3, pollMs = 30e3, stableMs = 60e3, sleep, now, config = cfg }) {
+async function runCenter({ center, source, sink, results, reportDir, forceMode, inputDate, onlyTab, kind = 'live-trigger', waitForN8n, waitMs = 15 * 60e3, pollMs = 30e3, stableMs = 60e3, sleep, now, config = cfg }) {
   const c = config.centers[center];
   const configured = c.generate;
   if (configured === 'off') return [];
@@ -43,10 +43,10 @@ async function runCenter({ center, source, sink, results, reportDir, forceMode, 
   const mode = forceMode === 'dry-run' ? 'dry-run' : configured;
   const engine = createEngine(await source.readCurriculum());
   const reports = [];
-  for (const tab of c.tabs) {
+  for (const tab of (onlyTab ? c.tabs.filter(t => t === onlyTab) : c.tabs)) {
     let grid = await source.readGrid(c.sheetId, tab);
     const dry = mode === 'dry-run';
-    const cols = inputDate ? pickColumnsForInput(grid.headerRow, inputDate) : pickColumns(grid.headerRow, { dryRun: dry });
+    const cols = inputDate ? pickColumnsForInput(grid.headerRow, inputDate === 'newest' ? pickColumns(grid.headerRow, { dryRun: false }).input.text : inputDate) : pickColumns(grid.headerRow, { dryRun: dry });
     const students = studentsFromGrid(grid, cols.input, cols.newHeaderDate);          // snapshot taken now
     const generated = engine.generate(students).map((g, i) => ({ ...g, row: students[i].row }));
     const runId = `${center.replace(/\s+/g, '')}-${tab.replace(/\s+/g, '')}-${cols.newHeaderDate.replace(/\//g, '')}`;
@@ -59,11 +59,11 @@ async function runCenter({ center, source, sink, results, reportDir, forceMode, 
     let report;
     if (waitForN8n) grid = await waitForOutput({ source, sheetId: c.sheetId, tab, outText: cols.newHeaderDate, firstGrid: grid, waitMs, pollMs, stableMs, sleep, now });
     if (waitForN8n && !grid) {
-      report = { runId, center, tab, headerDate: cols.newHeaderDate, mode: 'dry-run', wroteAnything: false, total: generated.length, matched: 0, differs: 0, colourDiffs: 0, byReason: {}, verdict: 'n8n-not-finished', rows: [] };
+      report = { runId, center, tab, kind, headerDate: cols.newHeaderDate, mode: 'dry-run', wroteAnything: false, total: generated.length, matched: 0, differs: 0, colourDiffs: 0, byReason: {}, verdict: 'n8n-not-finished', rows: [] };
     } else {
       const outCols = pickColumnsForInput(grid.headerRow, cols.input.text);
       if (!outCols.output) throw new Error(`n8n output column ${cols.newHeaderDate} not found in ${tab}`);
-      report = { ...compareRun({ center, runId, claudeRows: generated, n8nRows: n8nRowsFromGrid(grid, outCols.output), headerDate: cols.newHeaderDate }), tab };
+      report = { ...compareRun({ center, runId, claudeRows: generated, n8nRows: n8nRowsFromGrid(grid, outCols.output), headerDate: cols.newHeaderDate }), tab, kind };
     }
     record(reportDir, report);
     if (results) await results.publish(report);

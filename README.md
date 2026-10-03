@@ -17,13 +17,12 @@ Defaults applied (no preference given): typed "Ob" is written as "0b"; HT1 holds
 
 Not verified yet: Google API reads/writes against real sheets (service account not set up), other centers' layouts, live sink.
 
-## Button flow (dry run alongside n8n)
-Schedule Sync click -> n8n webhook (unchanged) + `triggerClaudeDryRun_()` (apps-script/claude_dry_run.gs) -> GitHub Actions `dry-run.yml`
--> snapshot input week, generate, wait for n8n's column to settle (up to 15 min), compare, write to the "Claude Dry Run" results sheet.
-Never writes a schedule sheet or the portal.
+## How it runs next to n8n (dashboard on port 8091)
+Schedule Sync click -> n8n webhook (unchanged) -> n8n also calls `POST /trigger` on this service (node: n8n/tell-claude-node.json)
+-> the service snapshots the input week, generates next week, waits for n8n's new column to settle (up to 15 min), compares.
+The dashboard (`GET /`) shows live runs plus the last N past weeks (BACKFILL_WEEKS, filled at start-up and every 6 hours).
+Never writes a schedule sheet or the portal. Student names never appear; rows are sheet row numbers.
 
-Setup (nothing secret is committed):
-- Secret `GOOGLE_SA_KEY`: service account JSON key. Share each center sheet + curriculum sheet with the account as Viewer; share the results sheet as Editor.
-- Variable `CENTERS_JSON`: sheet ids, tabs, per-center mode (see src/config.js).
-- Apps Script properties: `GITHUB_TOKEN` (fine-grained, this repo, Actions read/write), `RESULTS_SHEET_ID`.
-- Results sheet tabs: "Claude Dry Run" and "Claude Dry Run Differences" (header rows optional).
+Deploy (host 192.168.86.67): see deploy/ (docker-compose.yml or bb-dashboard.service).
+Needs: service account key with Viewer on the curriculum sheet and each center sheet; CLAUDE_TRIGGER_TOKEN; CENTERS_JSON (ids are not committed).
+Sample data to see the layout: `node scripts/make-demo.js; DEMO=1 FIXTURE=fixtures/demo.json CLAUDE_TRIGGER_TOKEN=x BACKFILL_WEEKS=6 CENTERS_JSON='{"centers":{"Liberty Hill":{"sheetId":"d","tabs":["Table1 2026"],"generate":"dry-run"}}}' node src/server.js`

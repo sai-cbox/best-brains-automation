@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude vs n8n: Generate next week</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mute:#5d6b79;--line:#e2e6ea;--ok:#1f8a4c;--okbg:#e5f4eb;--bad:#b4381f;--badbg:#fbe9e5;--warn:#9a6b00;--warnbg:#fff3d6;--acc:#2a5db0;--bar:#2a5db0;--bar2:#d9a441}
+@media (prefers-color-scheme:dark){:root{--bg:#12161b;--card:#1b2128;--ink:#e8edf2;--mute:#9aa7b4;--line:#2b343d;--ok:#5cc58a;--okbg:#17301f;--bad:#f08a72;--badbg:#38201b;--warn:#e3b341;--warnbg:#352b10;--acc:#7ea6e8;--bar:#7ea6e8;--bar2:#d9a441}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}.sub{color:var(--mute);margin:0 0 16px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 16px}
+select,button{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.big{font-size:28px;font-weight:650;line-height:1.1}.lbl{color:var(--mute);font-size:13px}
+.note{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:14px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+tr.run{cursor:pointer}tr.run:hover{background:color-mix(in srgb,var(--acc) 7%,transparent)}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.good{background:var(--okbg);color:var(--ok)}.review{background:var(--badbg);color:var(--bad)}.nf{background:var(--warnbg);color:var(--warn)}
+.section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;overflow-x:auto}
+pre{margin:0;white-space:pre-wrap;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace}
+.diff td{background:color-mix(in srgb,var(--card) 92%,var(--ink))}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.hd{font-size:11px;color:var(--mute);text-transform:uppercase;margin-bottom:2px}
+svg text{fill:var(--mute);font-size:11px}.legend span{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:13px;color:var(--mute)}.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.empty{color:var(--mute);padding:20px;text-align:center}
+@media(max-width:640px){.two{grid-template-columns:1fr}th:nth-child(3),td:nth-child(3){display:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Claude vs n8n: Generate next week</h1>
+  <p class="sub">Dry run only. Claude's version never writes to the sheet or the portal; it just generates what it would write and is compared with what n8n wrote.</p>
+  <div id="demo" class="note" hidden>Sample data. These numbers are generated for layout only and say nothing about real behaviour.</div>
+  <div class="bar">
+    <label>Show last <select id="weeks"><option>4</option><option selected>6</option><option>8</option><option>12</option></select> weeks</label>
+    <label>Center <select id="center"><option value="">All</option></select></label>
+    <label><input type="checkbox" id="onlyDiff"> only runs with differences</label>
+    <span class="lbl" id="jobs"></span>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="section"><h2>Match by week</h2><div id="chart"></div><div class="legend"><span><i class="sw" style="background:var(--bar)"></i>Same as n8n</span><span><i class="sw" style="background:var(--bar2)"></i>Different</span></div></div>
+  <div class="section"><h2>Why cells differ</h2><div id="reasons"></div></div>
+  <div class="section"><h2>Runs</h2><p class="lbl" style="margin-top:0">Click a run to see every differing cell. Rows are sheet row numbers. "Past week" runs compare against n8n's column as it is now, so staff edits made after n8n wrote it can show up as differences.</p><div id="runs"></div></div>
+</main>
+<script>
+const EXPLAIN={
+ 'level-or-chapter':['Different level or chapter','A real rule difference. Check these first.'],
+ 'test-or-score-text':['Same place, different test or score text','Level and chapter agree; the test label, score or CNTNU text differs.'],
+ 'rvw-prefix':['Review prefix','Only the RVW prefix differs.'],
+ 'note-in-brackets':['Note in brackets','Only the (NXT ...) or (HT2) style note differs.'],
+ 'staff-added-text':['n8n cell has extra text','n8n\'s cell starts with Claude\'s text and has more, usually results staff typed afterwards.'],
+ 'n8n-wrote-null':['n8n wrote "null"','A known n8n bug on some review lines.'],
+ 'line-count':['Different number of lines','One side has an extra or missing line.'],
+ 'missing-in-n8n':['Missing in n8n','n8n has no cell for this row.'],
+ 'other':['Other','Does not fit another reason.']};
+const $=s=>document.querySelector(s);
+const el=(t,a={},...k)=>{const e=document.createElement(t);for(const[x,v]of Object.entries(a))x==='class'?e.className=v:e.setAttribute(x,v);k.flat().forEach(c=>e.append(c instanceof Node?c:document.createTextNode(c)));return e};
+let data={runs:[],jobs:[]};
+async function load(){
+  const r=await fetch('/api/runs?weeks='+$('#weeks').value);data=await r.json();
+  $('#demo').hidden=!data.demo;
+  const cs=[...new Set(data.runs.map(x=>x.center))];const sel=$('#center'),cur=sel.value;
+  sel.replaceChildren(el('option',{value:''},'All'),...cs.map(c=>el('option',{value:c},c)));sel.value=cs.includes(cur)?cur:'';
+  const running=data.jobs.filter(j=>j.status==='running');$('#jobs').textContent=running.length?`${running.length} run in progress, waiting for n8n`:'';
+  render();
+}
+const pct=(a,b)=>b?Math.round(a/b*1000)/10:0;
+function render(){
+  const c=$('#center').value,only=$('#onlyDiff').checked;
+  let runs=data.runs.filter(r=>(!c||r.center===c));
+  const done=runs.filter(r=>r.verdict!=='n8n-not-finished');
+  const tot=done.reduce((a,r)=>a+r.total,0),mat=done.reduce((a,r)=>a+r.matched,0);
+  const weeks=new Set(runs.map(r=>r.headerDate)).size;
+  const rev=runs.filter(r=>r.verdict==='review').length,nf=runs.filter(r=>r.verdict==='n8n-not-finished').length;
+  const cards=[[tot?pct(mat,tot)+'%':'-','cells matching n8n ('+mat+' of '+tot+')'],[weeks,'weeks covered'],[runs.length-rev-nf+' of '+runs.length,'runs fully matching'],[nf,'runs where n8n did not finish in time']];
+  $('#cards').replaceChildren(...cards.map(([b,l])=>el('div',{class:'card'},el('div',{class:'big'},String(b)),el('div',{class:'lbl'},l))));
+  chart(done);reasons(done);
+  if(only)runs=runs.filter(r=>r.verdict!=='good');
+  table(runs);
+}
+function chart(done){
+  const by={};done.forEach(r=>{(by[r.headerDate]??=[0,0]);by[r.headerDate][0]+=r.matched;by[r.headerDate][1]+=r.differs});
+  const ks=Object.keys(by).sort((a,b)=>new Date(a)-new Date(b));
+  if(!ks.length){$('#chart').replaceChildren(el('div',{class:'empty'},'No runs in this window yet.'));return}
+  const W=Math.max(1000,ks.length*110),H=200,pl=34,bw=Math.min(44,(W-pl)/ks.length-14);
+  const ns='http://www.w3.org/2000/svg',s=document.createElementNS(ns,'svg');s.setAttribute('viewBox',`0 0 ${W} ${H}`);s.setAttribute('width','100%');s.setAttribute('role','img');s.setAttribute('aria-label','Matching and differing cells per week');
+  const mk=(n,a,t)=>{const e=document.createElementNS(ns,n);for(const k in a)e.setAttribute(k,a[k]);if(t!=null)e.textContent=t;s.append(e);return e};
+  [0,50,100].forEach(v=>{const y=H-26-(H-52)*v/100;mk('line',{x1:pl,x2:W,y1:y,y2:y,stroke:'var(--line)'});mk('text',{x:pl-6,y:y+4,'text-anchor':'end'},v+'%')});
+  ks.forEach((k,i)=>{const[m,d]=by[k],t=m+d,x=pl+10+i*((W-pl)/ks.length),h=H-52,hm=h*m/t;
+    mk('rect',{x,y:H-26-hm,width:bw,height:hm,fill:'var(--bar)',rx:2});
+    if(d)mk('rect',{x,y:H-26-h,width:bw,height:h-hm,fill:'var(--bar2)',rx:2});
+    mk('text',{x:x+bw/2,y:H-12,'text-anchor':'middle'},k.slice(0,5));
+    mk('text',{x:x+bw/2,y:H-30-h-4+0,'text-anchor':'middle'},pct(m,t)+'%');});
+  $('#chart').replaceChildren(s);
+}
+function reasons(done){
+  const c={};done.forEach(r=>Object.entries(r.byReason||{}).forEach(([k,v])=>c[k]=(c[k]||0)+v));
+  const ks=Object.keys(c).sort((a,b)=>c[b]-c[a]);
+  if(!ks.length){$('#reasons').replaceChildren(el('div',{class:'empty'},'No differences in this window.'));return}
+  $('#reasons').replaceChildren(el('table',{},el('tr',{},el('th',{},'Reason'),el('th',{},'Cells'),el('th',{},'What it means')),
+    ...ks.map(k=>{const[t,d]=EXPLAIN[k]||[k,''];return el('tr',{},el('td',{},t),el('td',{},String(c[k])),el('td',{class:'lbl'},d))})));
+}
+function table(runs){
+  if(!runs.length){$('#runs').replaceChildren(el('div',{class:'empty'},'No runs to show.'));return}
+  const t=el('table',{},el('tr',{},...['Week','Center / tab','Source','Same','Result'].map(h=>el('th',{},h))));
+  runs.forEach(r=>{
+    const label=r.verdict==='good'?['good','All match']:r.verdict==='n8n-not-finished'?['nf','n8n not finished']:['review',r.differs+' differ'];
+    const tr=el('tr',{class:'run'},el('td',{},r.headerDate),el('td',{},r.center+' / '+r.tab),el('td',{},r.kind==='past-week'?'Past week':'Button click'),el('td',{},r.verdict==='n8n-not-finished'?'-':`${r.matched}/${r.total} (${pct(r.matched,r.total)}%)`),el('td',{},el('span',{class:'pill '+label[0]},label[1])));
+    let open=null;tr.onclick=async()=>{if(open){open.remove();open=null;return}
+      const d=await (await fetch('/api/runs/'+encodeURIComponent(r.runId))).json();
+      const diffs=(d.rows||[]).filter(x=>x.status!=='match');
+      const body=diffs.length?diffs.map(x=>el('div',{style:'margin:0 0 12px'},el('div',{class:'lbl'},`Row ${x.row}: ${(EXPLAIN[x.reason]||[x.reason])[0]}`),el('div',{class:'two'},el('div',{},el('div',{class:'hd'},'Claude'),el('pre',{},x.claude??'')),el('div',{},el('div',{class:'hd'},'n8n'),el('pre',{},x.n8n??''))))):[el('div',{class:'lbl'},r.verdict==='n8n-not-finished'?'n8n did not write its column within the wait window.':'Every cell matches.')];
+      open=el('tr',{class:'diff'},el('td',{colspan:'5'},...body));tr.after(open)};
+    t.append(tr)});
+  $('#runs').replaceChildren(t);
+}
+['weeks'].forEach(i=>$('#'+i).onchange=load);['center','onlyDiff'].forEach(i=>$('#'+i).onchange=render);
+load();setInterval(load,30000);
+</script>
+</body>
+</html>
