@@ -82,13 +82,14 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
 
 async function main() {
   const { cfg } = require('./config');
-  const { FixtureSource, GoogleSource } = require('./sheets');
+  const { FixtureSource } = require('./sheets');
+  const { PublicSheetSource } = require('./publicSheets');
   const port = +process.env.PORT || 8091;
   const token = process.env.CLAUDE_TRIGGER_TOKEN;
   if (!token) throw new Error('Set CLAUDE_TRIGGER_TOKEN (shared with the n8n HTTP node)');
   const fixture = process.env.FIXTURE;
   const reportDir = process.env.REPORT_DIR || path.join(__dirname, '..', 'reports');
-  const source = fixture ? new FixtureSource(fixture) : new GoogleSource();
+  const source = fixture ? new FixtureSource(fixture) : new PublicSheetSource({ curriculumSheetId: cfg.curriculumSheetId });
   createServer({ source, config: cfg, reportDir, token }).listen(port, '0.0.0.0', () => console.log(`dashboard on :${port}`));
   // Past weeks fill the dashboard without anyone clicking: at start-up, then every 6 hours.
   const weeks = +process.env.BACKFILL_WEEKS || 0;

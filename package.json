@@ -8,5 +8,7 @@
     "dryrun": "node src/run.js --mode dry-run",
     "live": "node src/run.js --mode live"
   },
-  "dependencies": { "googleapis": "^144.0.0" }
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
 }

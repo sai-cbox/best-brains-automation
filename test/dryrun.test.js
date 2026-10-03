@@ -115,11 +115,6 @@ test('button flow reports n8n-not-finished on timeout, and still writes nothing'
   assert.strictEqual(rep.wroteAnything, false);
 });
 
-test('results sheet may not be a schedule or curriculum sheet', () => {
-  const { ResultsSink } = require('../src/sheets');
-  assert.throws(() => new ResultsSink('sheet-1', ['sheet-1'], {}), /must not be/);
-});
-
 test('config reads centers from CENTERS_JSON and defaults the rest to off', () => {
   const { load } = require('../src/config');
   const c = load({ CENTERS_JSON: JSON.stringify({ centers: { 'Liberty Hill': { sheetId: 'a', tabs: ['T'], generate: 'dry-run' } } }) });

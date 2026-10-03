@@ -12,7 +12,8 @@ const { cfg, centers, modeFor } = require('./config');
 const { pickColumns, pickColumnsForInput, columnSignature, studentsFromGrid, n8nRowsFromGrid } = require('./grid');
 const { compareRun } = require('./compare');
 const { record } = require('./runlog');
-const { FixtureSource, GoogleSource, Sink, ResultsSink } = require('./sheets');
+const { FixtureSource, Sink } = require('./sheets');
+const { PublicSheetSource } = require('./publicSheets');
 
 const arg = n => { const i = process.argv.indexOf(n); return i > -1 ? process.argv[i + 1] : null; };
 const realSleep = ms => new Promise(r => setTimeout(r, ms));
@@ -77,10 +78,9 @@ async function main() {
   const only = arg('--center');
   const fixture = arg('--fixture');
   const reportDir = arg('--out') || path.join(__dirname, '..', 'reports');
-  const source = fixture ? new FixtureSource(fixture) : new GoogleSource();
+  const source = fixture ? new FixtureSource(fixture) : new PublicSheetSource({ curriculumSheetId: cfg.curriculumSheetId });
   const sink = new Sink(mode === 'live' ? 'live' : 'dry-run', null);
-  const forbidden = [cfg.curriculumSheetId, ...Object.values(centers).map(c => c.sheetId)].filter(Boolean);
-  const results = cfg.resultsSheetId && !fixture ? ResultsSink.google(cfg.resultsSheetId, forbidden) : null;
+  const results = null;
   const waitForN8n = process.argv.includes('--wait-for-n8n');
   for (const center of Object.keys(centers)) {
     if (only && center !== only) continue;
