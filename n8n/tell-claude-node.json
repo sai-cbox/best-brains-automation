@@ -9,15 +9,44 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ spreadsheet_id: $json.body.spreadsheet_id, sheet_name: $json.body.sheet_name }) }}",
-        "options": { "timeout": 5000 }
+        "options": {
+          "timeout": 5000
+        }
       },
       "name": "Tell Claude (dry run)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [0, 900],
+      "position": [
+        0,
+        900
+      ],
       "onError": "continueRegularOutput",
       "alwaysOutputData": true,
       "notes": "Compare-only side call. Failure or timeout never affects the schedule run. Credential: Header Auth, name X-Token, value = CLAUDE_TRIGGER_TOKEN."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.86.67:8091/trigger-done",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ spreadsheet_id: $json.body.spreadsheet_id, sheet_name: $json.body.sheet_name }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "name": "Tell Claude (n8n finished)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        1100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Optional. Connect after \"HTTP Request4\" (the node that writes the new week to the sheet). Lets Claude compare the moment n8n finishes. Same Header Auth credential."
     }
   ],
   "connections": {}

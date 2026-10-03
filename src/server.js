@@ -11,8 +11,7 @@ const fs = require('fs'), path = require('path');
 const crypto = require('crypto');
 const { runCenter } = require('./run');
 const { backfill } = require('./backfill');
-const { createEngine } = require('./engine');
-const { evaluate, curriculumSummary, OPEN_QUESTIONS } = require('./rules');
+const { RULES, curriculumSummary, OPEN_QUESTIONS } = require('./rules');
 
 function readRuns(reportDir) {
   const dir = path.join(reportDir, 'runs');
@@ -27,15 +26,24 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
   const dashboard = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
   const centerFor = id => Object.entries(config.centers).find(([, c]) => c.sheetId && c.sheetId === id);
 
+  const allJobs = [];   // newest first, last 30: what the Live page shows
+  const events = [];    // every ping n8n sent us, including ones we ignored (helps check the n8n wiring)
+  const pushEvent = e => { events.unshift({ at: new Date().toISOString(), ...e }); events.length = Math.min(events.length, 30); };
+
   async function startTrigger(center, tab) {
     const key = `${center}|${tab}`;
     if (jobs.get(key)?.status === 'running') return 'already-running';
-    const job = { status: 'running', startedAt: new Date().toISOString() };
-    jobs.set(key, job);
-    runCenter({ center, source, sink: null, reportDir, forceMode: 'dry-run', config, inputDate: 'newest', onlyTab: tab, kind: 'live-trigger', waitForN8n: true, ...runOpts })
-      .then(() => { job.status = 'done'; })
-      .catch(e => { job.status = 'error'; job.error = e.message; console.error(`${key}: ${e.message}`); });
-    job.promise = null;
+    const job = { id: `${Date.now()}`, key, center, tab, status: 'running', stage: 'triggered', startedAt: new Date().toISOString(), history: [{ at: new Date().toISOString(), stage: 'triggered' }], n8nDone: false, polls: 0 };
+    jobs.set(key, job); allJobs.unshift(job); allJobs.length = Math.min(allJobs.length, 30);
+    const onStage = (stage, d = {}) => {
+      Object.assign(job, d.headerDate ? { headerDate: d.headerDate, inputDate: d.inputDate, cells: d.cells } : {});
+      if (stage === 'waiting' && d.polls) { job.polls = d.polls; job.elapsedMs = d.elapsedMs; job.columnSeen = d.columnSeen; return; }
+      if (job.stage !== stage) { job.stage = stage; job.history.push({ at: new Date().toISOString(), stage }); }
+    };
+    runCenter({ center, source, sink: null, reportDir, forceMode: 'dry-run', config, inputDate: 'newest', onlyTab: tab, kind: 'live-trigger', waitForN8n: true, onStage, earlyDone: () => job.n8nDone, ...runOpts })
+      .then(([r]) => { job.status = 'done'; job.stage = 'done'; job.finishedAt = new Date().toISOString(); job.history.push({ at: job.finishedAt, stage: 'done' });
+        if (r) Object.assign(job, { runId: r.runId, verdict: r.verdict, matched: r.matched, total: r.total, differs: r.differs }); })
+      .catch(e => { job.status = 'error'; job.stage = 'error'; job.error = e.message; job.finishedAt = new Date().toISOString(); job.history.push({ at: job.finishedAt, stage: 'error' }); console.error(`${key}: ${e.message}`); });
     return 'started';
   }
 
@@ -43,7 +51,7 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
   async function rulesPayload() {
     if (rulesCache && Date.now() - rulesCache.at < 60e3) return rulesCache.body;
     const cur = await source.readCurriculum();
-    const body = { rules: evaluate(createEngine(cur), cur), curriculum: curriculumSummary(cur), openQuestions: OPEN_QUESTIONS };
+    const body = { rules: RULES, curriculum: curriculumSummary(cur), openQuestions: OPEN_QUESTIONS };
     rulesCache = { at: Date.now(), body };
     return body;
   }
@@ -63,6 +71,7 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
         const runs = readRuns(reportDir).filter(r => mdy(r.headerDate) >= cutoff).sort((a, b) => mdy(b.headerDate) - mdy(a.headerDate) || a.center.localeCompare(b.center)).map(summary);
         return send(res, 200, { runs, jobs: [...jobs].map(([k, j]) => ({ key: k, status: j.status, startedAt: j.startedAt, error: j.error })), demo: !!process.env.DEMO });
       }
+      if (req.method === 'GET' && url.pathname === '/api/live') return send(res, 200, { now: new Date().toISOString(), jobs: allJobs, events });
       if (req.method === 'GET' && url.pathname === '/api/rules') {
         try { return send(res, 200, await rulesPayload()); } catch (e) { return send(res, 502, { error: `Could not read the curriculum sheet: ${e.message}` }); }
       }
@@ -76,8 +85,28 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
         const body = await readBody(req);
         if (!body || !body.spreadsheet_id || !body.sheet_name) return send(res, 400, { error: 'need spreadsheet_id and sheet_name' });
         const hit = centerFor(body.spreadsheet_id);
-        if (!hit || hit[1].generate === 'off' || !hit[1].tabs.includes(body.sheet_name)) return send(res, 202, { status: 'ignored', reason: 'sheet/tab not configured for dry run' });
-        return send(res, 202, { status: await startTrigger(hit[0], body.sheet_name) });
+        if (!hit || hit[1].generate === 'off' || !hit[1].tabs.includes(body.sheet_name)) {
+          pushEvent({ type: 'trigger', result: 'ignored', sheet: String(body.sheet_name), reason: 'sheet or tab is not switched on for dry run' });
+          return send(res, 202, { status: 'ignored', reason: 'sheet/tab not configured for dry run' });
+        }
+        const status = await startTrigger(hit[0], body.sheet_name);
+        pushEvent({ type: 'trigger', result: status, center: hit[0], sheet: body.sheet_name });
+        return send(res, 202, { status });
+      }
+      if (req.method === 'POST' && url.pathname === '/trigger-done') {
+        // Optional second ping from n8n after it finishes writing: lets the comparison start right away.
+        if (!authed(req)) return send(res, 401, { error: 'bad token' });
+        const body = await readBody(req);
+        if (!body || !body.spreadsheet_id || !body.sheet_name) return send(res, 400, { error: 'need spreadsheet_id and sheet_name' });
+        const hit = centerFor(body.spreadsheet_id);
+        const job = hit && jobs.get(`${hit[0]}|${body.sheet_name}`);
+        if (job && job.status === 'running') {
+          job.n8nDone = true; job.history.push({ at: new Date().toISOString(), stage: 'n8n-finished-ping' });
+          pushEvent({ type: 'finished', result: 'received', center: hit[0], sheet: body.sheet_name });
+          return send(res, 202, { status: 'received' });
+        }
+        pushEvent({ type: 'finished', result: 'ignored', sheet: String(body.sheet_name), reason: 'no run in progress for this sheet' });
+        return send(res, 202, { status: 'ignored' });
       }
       if (req.method === 'POST' && url.pathname === '/api/backfill') {
         if (!authed(req)) return send(res, 401, { error: 'bad token' });

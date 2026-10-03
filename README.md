@@ -33,3 +33,5 @@ Sample data to see the layout: `node scripts/make-demo.js; DEMO=1 FIXTURE=fixtur
 - Run page: every student row, this week's cell, what n8n wrote, what Claude would write, filters and search.
 - Rules: every rule with examples computed live by the engine, the curriculum read from the sheet, and open questions for Sai.
 Sample data for layout: node scripts/make-demo.js; node scripts/seed-demo-live.js fixtures/demo.json /tmp/demo-reports (then run the server with DEMO=1 FIXTURE=fixtures/demo.json REPORT_DIR=/tmp/demo-reports).
+- Live: runs in progress step by step (triggered, generated, waiting for n8n, compared), recent runs, and every ping n8n sent (including ignored ones, to check the wiring).
+n8n wiring: n8n/tell-claude-node.json has two nodes. "Tell Claude (dry run)" connects from the Webhook node. "Tell Claude (n8n finished)" is optional and connects after "HTTP Request4" (the node that writes the new week); it lets the comparison start the moment n8n finishes.

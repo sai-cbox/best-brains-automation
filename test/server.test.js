@@ -67,12 +67,43 @@ test('backfill records past weeks; dashboard serves', () => withServer(async (ba
   assert.strictEqual((await fetch(base + '/api/runs/..%2f..%2fetc')).status, 404);
 }));
 
-test('rules page data: every example is computed by the engine, and the curriculum comes from the sheet', () => withServer(async base => {
+test('rules page data: plain when/then rules, and the curriculum comes from the sheet', () => withServer(async base => {
   const d = await (await fetch(base + '/api/rules')).json();
-  assert.ok(d.rules.length >= 20);
-  const ex = d.rules.flatMap(r => r.examples);
-  assert.ok(ex.length >= 20 && ex.every(e => typeof e.output === 'string'));
-  assert.strictEqual(d.rules.find(r => r.id === 'level-end').examples[0].output, 'M 3 A');
+  const items = d.rules.flatMap(g => g.items);
+  assert.ok(items.length >= 40 && items.every(i => i.when && i.then));
+  assert.ok(items.every(i => !('examples' in i)));
   assert.ok(d.curriculum.levels.Maths.includes('0b') && d.curriculum.holidays.length > 0);
   assert.ok(d.openQuestions.length > 0);
 }));
+
+test('live page data: stages are tracked, and the "n8n finished" ping ends the wait early', () => withServer(async (base, dir, srv) => {
+  const j = async p => (await fetch(base + p)).json();
+  const body = { spreadsheet_id: 'sheet-lh', sheet_name: 'Table1 2026' };
+  // an ignored ping is recorded for wiring checks
+  await post(base, '/trigger', { spreadsheet_id: 'other', sheet_name: 'x' });
+  await post(base, '/trigger', body);
+  for (let i = 0; i < 200; i++) { const { jobs } = await j('/api/live'); if (jobs[0]?.polls > 0) break; await new Promise(r => setTimeout(r, 10)); }
+  let live = await j('/api/live');
+  assert.strictEqual(live.jobs[0].status, 'running');
+  assert.strictEqual(live.jobs[0].stage, 'waiting');
+  assert.ok(live.jobs[0].cells > 0 && live.jobs[0].headerDate);
+  // stableMs is 60s, so without the ping this run would keep waiting
+  assert.strictEqual((await (await post(base, '/trigger-done', body)).json()).status, 'received');
+  for (let i = 0; i < 300 && live.jobs[0].status === 'running'; i++) { await new Promise(r => setTimeout(r, 10)); live = await j('/api/live'); }
+  assert.strictEqual(live.jobs[0].status, 'done');
+  assert.ok(['good', 'review'].includes(live.jobs[0].verdict));
+  const stages = live.jobs[0].history.map(h => h.stage);
+  for (const s of ['triggered', 'generated', 'waiting', 'n8n-finished-ping', 'n8n-ready', 'comparing', 'done']) assert.ok(stages.includes(s), `missing stage ${s}: ${stages}`);
+  assert.deepStrictEqual(live.events.map(e => e.result).sort(), ['ignored', 'received', 'started']);
+  // a done-ping with nothing in progress is ignored, and needs the token
+  assert.strictEqual((await (await post(base, '/trigger-done', body)).json()).status, 'ignored');
+  assert.strictEqual((await post(base, '/trigger-done', body, 'bad')).status, 401);
+}, { waitMs: 60000, pollMs: 5, stableMs: 60000 }, (() => {
+  const full = new FixtureSource(fixture); let reads = 0;
+  return { readCurriculum: () => full.readCurriculum(), readGrid: async (id, tab) => {
+    const g = await full.readGrid(id, tab); reads++;
+    if (reads > 1) return g;
+    const keep = g.headerRow.length - 1;
+    return { headerRow: g.headerRow.slice(0, keep), rows: g.rows.map(r => ({ ...r, cells: r.cells.slice(0, keep) })) };
+  } };
+})()));

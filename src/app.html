@@ -33,6 +33,10 @@ td.diffc{background:var(--badbg)}td.same{background:transparent}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chip{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 8px;font:13px var(--mono)}
 details{margin:6px 0}summary{cursor:pointer;font-weight:600}
 .rule{border-top:1px solid var(--line);padding:14px 0}.rule:first-child{border-top:0}.rule h4{margin:0 0 4px;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.steps{list-style:none;margin:10px 0 0;padding:0}.steps li{display:flex;gap:10px;padding:6px 0;align-items:flex-start}
+.dot{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:2px solid var(--line);color:var(--mute)}
+.dot.done{background:var(--okbg);border-color:var(--ok);color:var(--ok)}.dot.now{border-color:var(--acc);color:var(--acc);animation:pulse 1.4s infinite}.dot.bad{background:var(--badbg);border-color:var(--bad);color:var(--bad)}
+@keyframes pulse{50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--acc) 20%,transparent)}}
 .empty{color:var(--mute);padding:20px;text-align:center}
 a{color:var(--acc)}
 svg text{fill:var(--mute);font-size:12px}.legend span{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:13px;color:var(--mute)}.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
@@ -40,7 +44,7 @@ svg text{fill:var(--mute);font-size:12px}.legend span{display:inline-flex;align-
 </style>
 </head>
 <body>
-<header><div class="top"><b>Claude vs n8n</b><nav id="nav"><a href="#/" data-r="home">Overview</a><a href="#/days" data-r="days">Day by day</a><a href="#/rules" data-r="rules">Rules</a></nav><span class="lbl" id="jobs"></span></div></header>
+<header><div class="top"><b>Claude vs n8n</b><nav id="nav"><a href="#/" data-r="home">Overview</a><a href="#/live" data-r="live">Live</a><a href="#/days" data-r="days">Day by day</a><a href="#/rules" data-r="rules">Rules</a></nav><span class="lbl" id="jobs"></span></div></header>
 <main id="view"></main>
 <script>
 const EXPLAIN={
@@ -167,7 +171,7 @@ async function runPage(v,id){
 
 /* ---------- Rules ---------- */
 async function rules(v){
-  v.append(el('h1',{},'Rules and conditions'),el('p',{class:'sub'},'Everything the generator does to turn this week\'s cell into next week\'s. The examples are run through the live code with the current curriculum sheet, so what you see is what it would write.'));
+  v.append(el('h1',{},'Rules and conditions'),el('p',{class:'sub'},'Every condition the generator uses to turn this week\'s cell into next week\'s, in the order it checks them. Tests, test weeks, novels, level order and holidays are not listed here because they come from the curriculum sheet (shown below).'));
   let d;try{d=await api('/api/rules')}catch(e){v.append(el('div',{class:'note'},e.message));return}
   v.append(el('div',{class:'section'},el('h2',{},'Waiting for your answer'),el('ul',{style:'margin:0;padding-left:20px'},d.openQuestions.map(q=>el('li',{},q)))));
   const c=d.curriculum;
@@ -175,25 +179,61 @@ async function rules(v){
     el('h3',{},'Level order'),...Object.entries(c.levels).map(([s,ls])=>el('div',{style:'margin:6px 0'},el('b',{},s+': '),el('span',{class:'chips',style:'display:inline-flex'},ls.map(l=>el('span',{class:'chip'},l))))),
     el('details',{},el('summary',{},'Tests and test weeks'),el('table',{},el('tr',{},el('th',{},'Level'),el('th',{},'Test and week')),Object.entries(c.tests).map(([k,t])=>el('tr',{},el('td',{},k),el('td',{},t.map(x=>`${x.exam} @ ${x.week}`).join('   ·   ')))))),
     el('details',{},el('summary',{},`Holidays (${c.holidays.length})`),el('div',{class:'chips',style:'margin-top:6px'},c.holidays.map(h=>el('span',{class:'chip'},h))))));
-  const STATUS={confirmed:'confirmed by back test',default:'default, not decided',open:'needs your answer','new':'new'};
-  const exampleTable=r=>el('table',{},
-    el('tr',{},['Example','Last week\'s cell','Class date / attendance','Claude writes'].map(h=>el('th',{},h))),
-    r.examples.map(e=>el('tr',{},
-      el('td',{},e.label),el('td',{},el('pre',{},e.input)),el('td',{class:'lbl'},e.date+' · '+e.attendance),
-      el('td',{},el('pre',{},e.output),e.flagCyan?el('span',{class:'pill info'},'cyan flag'):'',e.novelMail?el('span',{class:'pill info'},'novel email'):''))));
-  const ruleCard=r=>el('div',{class:'rule'},
-    el('h4',{},r.title,el('span',{class:'pill '+r.status},STATUS[r.status]||r.status),r.differsFromN8n?el('span',{class:'pill info'},'differs from n8n today'):''),
-    el('div',{class:'lbl',style:'margin-bottom:6px'},r.text),
-    r.examples.length?exampleTable(r):'');
-  [...new Set(d.rules.map(r=>r.cat))].forEach(cat=>v.append(el('div',{class:'section'},el('h2',{},cat),d.rules.filter(r=>r.cat===cat).map(ruleCard))));
+  const STATUS={confirmed:'confirmed by back test',default:'default, not decided',open:'needs your answer'};
+  d.rules.forEach(g=>v.append(el('div',{class:'section'},el('h2',{},g.cat),
+    el('table',{},el('tr',{},el('th',{style:'width:36%'},'When'),el('th',{},'Then'),el('th',{style:'width:150px'},'')),
+      g.items.map(r=>el('tr',{},el('td',{},r.when),el('td',{},r.then),
+        el('td',{},el('div',{class:'chips',style:'gap:4px'},r.status&&r.status!=='confirmed'?el('span',{class:'pill '+r.status},STATUS[r.status]):'',r.differs?el('span',{class:'pill info'},'differs from n8n today'):''))))))));
+}
+
+/* ---------- Live ---------- */
+const hhmmss=t=>new Date(t).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'});
+const dur=ms=>ms<60000?Math.round(ms/1000)+'s':Math.floor(ms/60000)+'m '+Math.round(ms%60000/1000)+'s';
+function stepsFor(j){
+  const at=n=>(j.history.find(h=>h.stage===n)||{}).at, has=n=>!!at(n);
+  const finished=j.status!=='running', timedOut=j.verdict==='n8n-not-finished';
+  const S=[
+    {t:'n8n told Claude a schedule run started',d:at('triggered')?hhmmss(at('triggered')):'',s:'done'},
+    {t:has('generated')?`Claude read the ${j.inputDate} column and generated ${j.cells} cells for ${j.headerDate}`:'Claude reads the sheet and generates next week',d:has('generated')?hhmmss(at('generated')):'',s:has('generated')?'done':'now'},
+    {t:'Waiting for n8n to write its new column',d:j.polls?`${j.polls} check${j.polls>1?"s":""}, ${dur(j.elapsedMs||0)}${j.columnSeen?' · column seen, waiting for it to settle':''}${j.n8nDone?' · n8n said it finished':''}`:(j.n8nDone?'n8n said it finished':''),s:has('n8n-ready')||has('comparing')||timedOut?(timedOut?'bad':'done'):has('generated')?'now':'todo'},
+    {t:timedOut?'n8n did not finish within the wait window':"n8n's column found",d:has('n8n-ready')?hhmmss(at('n8n-ready')):'',s:timedOut?'bad':has('n8n-ready')?'done':'todo'},
+    {t:j.status==='error'?'Something went wrong: '+j.error:finished&&!timedOut&&j.total!=null?`Compared: ${j.matched} of ${j.total} cells match${j.differs?', '+j.differs+' differ':''}`:'Compare Claude with n8n',d:at('done')?hhmmss(at('done')):'',s:j.status==='error'?'bad':finished?(timedOut?'bad':'done'):has('comparing')?'now':'todo'},
+  ];
+  if(j.status==='error')S[2].s=S[3].s='todo';
+  return S;
+}
+let liveTimer=null;
+async function live(v){
+  const box=el('div');v.append(el('h1',{},'Live runs'),el('p',{class:'sub'},'Every time n8n is triggered it tells Claude, and the run is followed here step by step. This page refreshes every 3 seconds.'),box);
+  const draw=async()=>{
+    let d;try{d=await api('/api/live')}catch(e){box.replaceChildren(el('div',{class:'note'},e.message));return}
+    const run=d.jobs.filter(j=>j.status==='running'),done=d.jobs.filter(j=>j.status!=='running').slice(0,10);
+    box.replaceChildren(
+      el('h3',{},`In progress (${run.length})`),
+      ...(run.length?run.map(j=>el('div',{class:'section'},el('div',{class:'day'},el('h2',{style:'margin:0'},`${j.center} / ${j.tab}`),el('span',{class:'lbl'},'started '+hhmmss(j.startedAt)+' · running '+dur(new Date(d.now)-new Date(j.startedAt)))),
+        el('ul',{class:'steps'},stepsFor(j).map((x,i)=>el('li',{},el('span',{class:'dot '+x.s},x.s==='done'?'✓':x.s==='bad'?'✕':String(i+1)),el('div',{},el('div',{},x.t),x.d?el('div',{class:'lbl'},x.d):'')))))):
+        [el('div',{class:'section'},el('div',{class:'empty'},'No run in progress. When someone clicks Schedule Sync on a switched-on sheet, it appears here within a second or two.'))]),
+      el('h3',{},'Recent runs'),
+      done.length?el('div',{class:'section'},el('table',{},el('tr',{},['Started','Center / tab','Schedule week','Took','Same','Result'].map(h=>el('th',{},h))),
+        done.map(j=>el('tr',{class:j.runId?'link':'',onclick:j.runId?(()=>location.hash='#/run/'+encodeURIComponent(j.runId)):null},
+          el('td',{},hhmmss(j.startedAt)),el('td',{},j.center+' / '+j.tab),el('td',{},j.headerDate||'-'),el('td',{},j.finishedAt?dur(new Date(j.finishedAt)-new Date(j.startedAt)):'-'),
+          el('td',{},j.total!=null&&j.verdict!=='n8n-not-finished'?`${j.matched}/${j.total}`:'-'),
+          el('td',{},j.status==='error'?el('span',{class:'pill review'},'error'):verdictPill(j)))))):el('div',{class:'section'},el('div',{class:'empty'},'Nothing yet since the service started.')),
+      el('h3',{},'Pings received from n8n (checks the wiring)'),
+      d.events.length?el('div',{class:'section'},el('table',{},el('tr',{},['Time','Which ping','Result','Detail'].map(h=>el('th',{},h))),
+        d.events.map(e=>el('tr',{},el('td',{},hhmmss(e.at)),el('td',{},e.type==='finished'?'"n8n finished"':'"Schedule started"'),
+          el('td',{},el('span',{class:'pill '+(e.result==='ignored'?'nf':'good')},e.result)),el('td',{class:'lbl'},[e.center,e.sheet,e.reason].filter(Boolean).join(' · ')))))):
+        el('div',{class:'section'},el('div',{class:'empty'},'No ping from n8n yet. If you clicked Schedule Sync and nothing shows, the "Tell Claude" node in n8n is not connected or cannot reach this host.')));
+  };
+  await draw();liveTimer=setInterval(draw,3000);
 }
 
 /* ---------- router ---------- */
 async function route(){
-  const h=location.hash.replace(/^#/,'')||'/';const v=$('#view');v.replaceChildren();
+  clearInterval(liveTimer);const h=location.hash.replace(/^#/,'')||'/';const v=$('#view');v.replaceChildren();
   const [,p,arg]=h.match(/^\/([^/]*)\/?(.*)$/)||[];
   document.querySelectorAll('nav a').forEach(a=>a.className=(a.dataset.r===(p||'home')||(p==='run'&&a.dataset.r==='days'))?'on':'');
-  try{ if(p==='days')await days(v);else if(p==='run')await runPage(v,decodeURIComponent(arg));else if(p==='rules')await rules(v);else await home(v);}
+  try{ if(p==='live')await live(v);else if(p==='days')await days(v);else if(p==='run')await runPage(v,decodeURIComponent(arg));else if(p==='rules')await rules(v);else await home(v);}
   catch(e){v.append(el('div',{class:'note'},'Could not load this page: '+e.message))}
   window.scrollTo(0,0);
 }

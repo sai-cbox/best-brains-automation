@@ -37,9 +37,9 @@ class PublicSheetSource {
     this.curriculumSheetId = curriculumSheetId; this.fetch = fetchImpl; this.ttl = ttlMs; this.now = now; this.cache = new Map();
   }
 
-  async _book(sheetId) {
+  async _book(sheetId, fresh = false) {
     const hit = this.cache.get(sheetId);
-    if (hit && this.now() - hit.at < this.ttl) return hit.book;
+    if (!fresh && hit && this.now() - hit.at < this.ttl) return hit.book;
     const res = await this.fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`, { redirect: 'follow' });
     if (!res.ok) throw new Error(`Could not download sheet ${sheetId.slice(0, 6)}… (HTTP ${res.status}). Is it shared as "Anyone with the link: Viewer"?`);
     const buf = Buffer.from(await res.arrayBuffer());
@@ -70,8 +70,8 @@ class PublicSheetSource {
   }
 
   /** { headerRow: string[], rows: [{ row, cells: [{text, colour}] }] }; cells[0] is column A. */
-  async readGrid(sheetId, tab) {
-    const ws = (await this._book(sheetId)).getWorksheet(tab);
+  async readGrid(sheetId, tab, opts = {}) {
+    const ws = (await this._book(sheetId, !!opts.fresh)).getWorksheet(tab);
     if (!ws) throw new Error(`Tab "${tab}" not found`);
     const rowsAll = [];
     ws.eachRow({ includeEmpty: true }, (row, n) => {

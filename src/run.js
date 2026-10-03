@@ -19,24 +19,30 @@ const arg = n => { const i = process.argv.indexOf(n); return i > -1 ? process.ar
 const realSleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** Waits until the output column exists and its content is unchanged for stableMs. Returns the grid, or null on timeout. */
-async function waitForOutput({ source, sheetId, tab, outText, firstGrid, waitMs, pollMs, stableMs, sleep = realSleep, now = Date.now }) {
+async function waitForOutput({ source, sheetId, tab, outText, firstGrid, waitMs, pollMs, stableMs, sleep = realSleep, now = Date.now, onPoll, earlyDone }) {
   const start = now();
-  let grid = firstGrid, lastSig = null, stableSince = null;
+  let grid = firstGrid, lastSig = null, stableSince = null, polls = 0;
   for (;;) {
     const cols = pickColumnsForInput(grid.headerRow, outText ? subtractWeek(outText) : '');
     if (cols.output) {
+      if (earlyDone && earlyDone()) {   // n8n said it finished writing: one fresh read, compare now
+        const g = await source.readGrid(sheetId, tab, { fresh: true });
+        if (pickColumnsForInput(g.headerRow, subtractWeek(outText)).output) return g;
+      }
       const sig = columnSignature(grid, cols.output.col);
       if (sig === lastSig) { if (now() - stableSince >= stableMs) return grid; }
       else { lastSig = sig; stableSince = now(); }
     } else { lastSig = null; stableSince = null; }
     if (now() - start >= waitMs) return null;
-    await sleep(pollMs);
-    grid = await source.readGrid(sheetId, tab);
+    if (onPoll) onPoll({ polls: ++polls, elapsedMs: now() - start, columnSeen: !!cols.output });
+    const quick = earlyDone && earlyDone();
+    await sleep(quick ? Math.min(pollMs, 3000) : pollMs);
+    grid = await source.readGrid(sheetId, tab, quick ? { fresh: true } : undefined);
   }
 }
 function subtractWeek(text) { const [m, d, y] = text.split('/').map(Number); const t = new Date(y, m - 1, d); t.setDate(t.getDate() - 7); return `${String(t.getMonth() + 1).padStart(2, '0')}/${String(t.getDate()).padStart(2, '0')}/${t.getFullYear()}`; }
 
-async function runCenter({ center, source, sink, results, reportDir, forceMode, inputDate, onlyTab, kind = 'live-trigger', waitForN8n, waitMs = 15 * 60e3, pollMs = 30e3, stableMs = 60e3, sleep, now, config = cfg }) {
+async function runCenter({ center, source, sink, results, reportDir, forceMode, inputDate, onlyTab, kind = 'live-trigger', waitForN8n, onStage, earlyDone, waitMs = 15 * 60e3, pollMs = 30e3, stableMs = 60e3, sleep, now, config = cfg }) {
   const c = config.centers[center];
   const configured = c.generate;
   if (configured === 'off') return [];
@@ -52,6 +58,7 @@ async function runCenter({ center, source, sink, results, reportDir, forceMode, 
     const generated = engine.generate(students).map((g, i) => ({ ...g, row: students[i].row, input: students[i].last_week_log, attendance: students[i].is_present ? 'present' : 'absent' }));
     const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);   // every click is its own run
     const runId = `${center.replace(/\s+/g, '')}-${tab.replace(/\s+/g, '')}-${cols.newHeaderDate.replace(/\//g, '')}-live${stamp}`;
+    if (onStage) onStage('generated', { cells: generated.length, headerDate: cols.newHeaderDate, inputDate: cols.input.text });
     if (!dry) {
       await sink.writeNextWeek({ sheetId: c.sheetId, tab, col: cols.input.col + 1, headerDate: cols.newHeaderDate,
         cells: generated.map(g => ({ row: g.row, text: g.next_week_log, needsColor: g.needs_color })) });
@@ -59,7 +66,13 @@ async function runCenter({ center, source, sink, results, reportDir, forceMode, 
       continue;
     }
     let report;
-    if (waitForN8n) grid = await waitForOutput({ source, sheetId: c.sheetId, tab, outText: cols.newHeaderDate, firstGrid: grid, waitMs, pollMs, stableMs, sleep, now });
+    if (waitForN8n) {
+      if (onStage) onStage('waiting', {});
+      grid = await waitForOutput({ source, sheetId: c.sheetId, tab, outText: cols.newHeaderDate, firstGrid: grid, waitMs, pollMs, stableMs, sleep, now, earlyDone,
+        onPoll: p => onStage && onStage('waiting', p) });
+      if (grid && onStage) onStage('n8n-ready', {});
+    }
+    if (onStage) onStage('comparing', {});
     if (waitForN8n && !grid) {
       report = { runId, center, tab, kind, headerDate: cols.newHeaderDate, mode: 'dry-run', wroteAnything: false, total: generated.length, matched: 0, differs: 0, colourDiffs: 0, byReason: {}, verdict: 'n8n-not-finished', rows: [] };
     } else {
