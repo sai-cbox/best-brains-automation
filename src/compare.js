@@ -35,9 +35,9 @@ function compareRun({ center, runId, claudeRows, n8nRows, headerDate, compareCol
   const n8nByRow = new Map(n8nRows.map(r => [r.row, r]));
   const rows = claudeRows.map(c => {
     const n = n8nByRow.get(c.row);
-    if (!n) return { row: c.row, status: 'differs', reason: 'missing-in-n8n', claude: c.next_week_log, n8n: null };
+    if (!n) return { row: c.row, input: c.input, attendance: c.attendance, status: 'differs', reason: 'missing-in-n8n', claude: c.next_week_log, n8n: null };
     const cmp = compareCell(c.next_week_log, n.cell);
-    return { row: c.row, ...cmp, claude: c.next_week_log, n8n: n.cell, colourClaude: !!c.needs_color, colourN8n: n.colour === 'cyan' };
+    return { row: c.row, input: c.input, attendance: c.attendance, ...cmp, claude: c.next_week_log, n8n: n.cell, colourClaude: !!c.needs_color, colourN8n: n.colour === 'cyan' };
   });
   // Colour is only meaningful right after n8n writes; staff clear cyan flags later, so past weeks skip it.
   const colourDiffs = compareColour ? rows.filter(r => r.status === 'match' && r.colourClaude !== r.colourN8n).length : 0;
@@ -46,6 +46,8 @@ function compareRun({ center, runId, claudeRows, n8nRows, headerDate, compareCol
   rows.filter(r => r.status === 'differs').forEach(r => { byReason[r.reason] = (byReason[r.reason] || 0) + 1; });
   return {
     runId, center, headerDate, mode: 'dry-run', wroteAnything: false,
+    n8nUpdated: rows.filter(r => r.n8n != null && norm(r.n8n) !== norm(r.input)).length,
+    claudeWouldUpdate: rows.filter(r => norm(r.claude) !== norm(r.input)).length,
     total: rows.length, matched, differs: rows.length - matched, colourDiffs, byReason,
     verdict: rows.length > 0 && matched === rows.length && colourDiffs === 0 ? 'good' : 'review',
     rows,

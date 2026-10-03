@@ -61,5 +61,18 @@ test('backfill records past weeks; dashboard serves', () => withServer(async (ba
   assert.strictEqual(runs.length, 4);
   assert.ok(runs.every(x => x.kind === 'past-week' && x.total > 0));
   assert.ok((await (await fetch(base + '/')).text()).includes('Claude vs n8n'));
+  const one = await (await fetch(`${base}/api/runs/${runs[0].runId}`)).json();
+  assert.ok(one.rows[0].input && one.rows[0].attendance, 'rows carry this week\'s cell and attendance');
+  assert.ok(typeof one.n8nUpdated === 'number' && typeof one.claudeWouldUpdate === 'number');
   assert.strictEqual((await fetch(base + '/api/runs/..%2f..%2fetc')).status, 404);
+}));
+
+test('rules page data: every example is computed by the engine, and the curriculum comes from the sheet', () => withServer(async base => {
+  const d = await (await fetch(base + '/api/rules')).json();
+  assert.ok(d.rules.length >= 20);
+  const ex = d.rules.flatMap(r => r.examples);
+  assert.ok(ex.length >= 20 && ex.every(e => typeof e.output === 'string'));
+  assert.strictEqual(d.rules.find(r => r.id === 'level-end').examples[0].output, 'M 3 A');
+  assert.ok(d.curriculum.levels.Maths.includes('0b') && d.curriculum.holidays.length > 0);
+  assert.ok(d.openQuestions.length > 0);
 }));

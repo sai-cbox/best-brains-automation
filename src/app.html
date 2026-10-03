@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude vs n8n: Generate next week</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16202a;--mute:#5d6b79;--line:#e2e6ea;--ok:#1f8a4c;--okbg:#e5f4eb;--bad:#b4381f;--badbg:#fbe9e5;--warn:#9a6b00;--warnbg:#fff3d6;--acc:#2a5db0;--accbg:#e6eefb;--bar:#2a5db0;--bar2:#d9a441;--mono:ui-monospace,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#12161b;--card:#1b2128;--ink:#e8edf2;--mute:#9aa7b4;--line:#2b343d;--ok:#5cc58a;--okbg:#17301f;--bad:#f08a72;--badbg:#38201b;--warn:#e3b341;--warnbg:#352b10;--acc:#7ea6e8;--accbg:#1d2a40;--bar:#7ea6e8;--bar2:#d9a441}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.top{max-width:1180px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px 24px;align-items:center}
+.top b{font-size:17px}nav{display:flex;gap:4px}nav a{padding:6px 12px;border-radius:8px;color:var(--mute);text-decoration:none;font-weight:600}
+nav a.on{background:var(--accbg);color:var(--acc)}
+main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
+h1{font-size:21px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}h3{font-size:14px;margin:18px 0 8px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.sub{color:var(--mute);margin:0 0 14px}.lbl{color:var(--mute);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 14px}
+select,button,input[type=search]{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+button{cursor:pointer}button.on{background:var(--accbg);color:var(--acc);border-color:var(--acc)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.card,.section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.section{margin-bottom:14px;overflow-x:auto}.big{font-size:27px;font-weight:650;line-height:1.1}
+.note{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:14px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);white-space:nowrap}
+tr.link{cursor:pointer}tr.link:hover{background:color-mix(in srgb,var(--acc) 7%,transparent)}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.good,.confirmed{background:var(--okbg);color:var(--ok)}.review,.open{background:var(--badbg);color:var(--bad)}.nf,.default{background:var(--warnbg);color:var(--warn)}.info{background:var(--accbg);color:var(--acc)}
+pre{margin:0;white-space:pre-wrap;font:13px/1.4 var(--mono)}
+td.diffc{background:var(--badbg)}td.same{background:transparent}
+.day{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;margin:0 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 8px;font:13px var(--mono)}
+details{margin:6px 0}summary{cursor:pointer;font-weight:600}
+.rule{border-top:1px solid var(--line);padding:14px 0}.rule:first-child{border-top:0}.rule h4{margin:0 0 4px;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.empty{color:var(--mute);padding:20px;text-align:center}
+a{color:var(--acc)}
+svg text{fill:var(--mute);font-size:12px}.legend span{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:13px;color:var(--mute)}.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+@media(max-width:700px){.hide-s{display:none}}
+</style>
+</head>
+<body>
+<header><div class="top"><b>Claude vs n8n</b><nav id="nav"><a href="#/" data-r="home">Overview</a><a href="#/days" data-r="days">Day by day</a><a href="#/rules" data-r="rules">Rules</a></nav><span class="lbl" id="jobs"></span></div></header>
+<main id="view"></main>
+<script>
+const EXPLAIN={
+ 'level-or-chapter':['Different level or chapter','A real rule difference. Check these first.'],
+ 'test-or-score-text':['Same place, different test or score text','Level and chapter agree; the test label, score or CNTNU text differs.'],
+ 'rvw-prefix':['Review prefix','Only the RVW prefix differs.'],
+ 'note-in-brackets':['Note in brackets','Only the (NXT ...) or (HT2) style note differs.'],
+ 'staff-added-text':['n8n cell has extra text','n8n\'s cell starts with Claude\'s text and has more, usually results staff typed afterwards.'],
+ 'n8n-wrote-null':['n8n wrote "null"','A known n8n bug on some review lines.'],
+ 'line-count':['Different number of lines','One side has an extra or missing line.'],
+ 'missing-in-n8n':['Missing in n8n','n8n has no cell for this row.'],
+ 'other':['Other','Does not fit another reason.']};
+const $=s=>document.querySelector(s);
+const el=(t,a={},...k)=>{const e=document.createElement(t);for(const[x,v]of Object.entries(a)){if(x==='class')e.className=v;else if(x.startsWith('on'))e[x]=v;else e.setAttribute(x,v)}k.flat().forEach(c=>c!=null&&e.append(c instanceof Node?c:document.createTextNode(String(c))));return e};
+const pct=(a,b)=>b?Math.round(a/b*1000)/10:0;
+const api=async p=>{const r=await fetch(p);if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||r.status);return r.json()};
+const mdy=s=>{const[m,d,y]=s.split('/').map(Number);return new Date(y,m-1,d)};
+const norm=s=>String(s??'').split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join('\n');
+const verdictPill=r=>r.verdict==='good'?el('span',{class:'pill good'},'All match'):r.verdict==='n8n-not-finished'?el('span',{class:'pill nf'},'n8n not finished'):el('span',{class:'pill review'},r.differs+' differ');
+const srcLabel=r=>r.kind==='past-week'?'Past week':'Button click';
+let weeks=6;
+
+/* ---------- Overview ---------- */
+async function home(v){
+  const d=await api('/api/runs?weeks='+weeks);let center='',only=false;
+  const body=el('div');
+  const draw=()=>{
+    let runs=d.runs.filter(r=>!center||r.center===center);
+    const done=runs.filter(r=>r.verdict!=='n8n-not-finished');
+    const tot=done.reduce((a,r)=>a+r.total,0),mat=done.reduce((a,r)=>a+r.matched,0);
+    const nf=runs.filter(r=>r.verdict==='n8n-not-finished').length,rev=runs.filter(r=>r.verdict==='review').length;
+    const cards=[[tot?pct(mat,tot)+'%':'-',`cells matching n8n (${mat} of ${tot})`],[new Set(runs.map(r=>r.headerDate)).size,'weeks covered'],[runs.length-rev-nf+' of '+runs.length,'runs fully matching'],[nf,'runs where n8n did not finish in time']];
+    body.replaceChildren(
+      el('div',{class:'cards'},cards.map(([b,l])=>el('div',{class:'card'},el('div',{class:'big'},b),el('div',{class:'lbl'},l)))),
+      el('div',{class:'section'},el('h2',{},'Match by week'),chart(done),el('div',{class:'legend'},el('span',{},el('i',{class:'sw',style:'background:var(--bar)'}),'Same as n8n'),el('span',{},el('i',{class:'sw',style:'background:var(--bar2)'}),'Different'))),
+      el('div',{class:'section'},el('h2',{},'Why cells differ'),reasons(done)),
+      el('div',{class:'section'},el('h2',{},'Runs'),el('p',{class:'lbl',style:'margin-top:0'},'Click a run for every student: this week\'s cell, what n8n wrote, and what Claude would write.'),runTable(only?runs.filter(r=>r.verdict!=='good'):runs,true)));
+  };
+  const cs=[...new Set(d.runs.map(r=>r.center))];
+  const cSel=el('select',{onchange:e=>{center=e.target.value;draw()}},el('option',{value:''},'All'),cs.map(c=>el('option',{value:c},c)));
+  const wSel=el('select',{onchange:e=>{weeks=+e.target.value;route()}},[4,6,8,12].map(n=>el('option',{value:n,...(n===weeks?{selected:''}:{})},n)));
+  v.append(el('h1',{},'Overview'),el('p',{class:'sub'},'Dry run only. Claude\'s version never writes to the sheet or the portal; it generates what it would write and is compared with what n8n wrote.'),
+    d.demo?el('div',{class:'note'},'Sample data. These numbers are generated for layout only and say nothing about real behaviour.'):'',
+    el('div',{class:'bar'},el('label',{},'Last ',wSel,' weeks '),el('label',{},'Center ',cSel),el('label',{},el('input',{type:'checkbox',onchange:e=>{only=e.target.checked;draw()}}),' only runs with differences')),body);
+  draw();
+}
+function chart(done){
+  const by={};done.forEach(r=>{(by[r.headerDate]??=[0,0]);by[r.headerDate][0]+=r.matched;by[r.headerDate][1]+=r.differs});
+  const ks=Object.keys(by).sort((a,b)=>mdy(a)-mdy(b));
+  if(!ks.length)return el('div',{class:'empty'},'No runs in this window yet.');
+  const W=Math.max(1000,ks.length*110),H=200,pl=34,bw=Math.min(44,(W-pl)/ks.length-14);
+  const ns='http://www.w3.org/2000/svg',s=document.createElementNS(ns,'svg');s.setAttribute('viewBox',`0 0 ${W} ${H}`);s.setAttribute('width','100%');s.setAttribute('role','img');s.setAttribute('aria-label','Matching and differing cells per week');
+  const mk=(n,a,t)=>{const e=document.createElementNS(ns,n);for(const k in a)e.setAttribute(k,a[k]);if(t!=null)e.textContent=t;s.append(e);return e};
+  [0,50,100].forEach(x=>{const y=H-26-(H-52)*x/100;mk('line',{x1:pl,x2:W,y1:y,y2:y,stroke:'var(--line)'});mk('text',{x:pl-6,y:y+4,'text-anchor':'end'},x+'%')});
+  ks.forEach((k,i)=>{const[m,d]=by[k],t=m+d,x=pl+10+i*((W-pl)/ks.length),h=H-52,hm=h*m/t;
+    mk('rect',{x,y:H-26-hm,width:bw,height:hm,fill:'var(--bar)',rx:2});if(d)mk('rect',{x,y:H-26-h,width:bw,height:h-hm,fill:'var(--bar2)',rx:2});
+    mk('text',{x:x+bw/2,y:H-10,'text-anchor':'middle'},k.slice(0,5));mk('text',{x:x+bw/2,y:H-30-h-4,'text-anchor':'middle'},pct(m,t)+'%')});
+  return s;
+}
+function reasons(done){
+  const c={};done.forEach(r=>Object.entries(r.byReason||{}).forEach(([k,v])=>c[k]=(c[k]||0)+v));
+  const ks=Object.keys(c).sort((a,b)=>c[b]-c[a]);
+  if(!ks.length)return el('div',{class:'empty'},'No differences in this window.');
+  return el('table',{},el('tr',{},el('th',{},'Reason'),el('th',{},'Cells'),el('th',{},'What it means')),ks.map(k=>{const[t,x]=EXPLAIN[k]||[k,''];return el('tr',{},el('td',{},t),el('td',{},c[k]),el('td',{class:'lbl'},x))}));
+}
+function runTable(runs,withTime){
+  if(!runs.length)return el('div',{class:'empty'},'No runs to show.');
+  const t=el('table',{},el('tr',{},['Schedule week','Center / tab','Source',withTime?'Run time':'','Same','n8n updated','Claude would update','Result'].map(h=>el('th',{class:h==='Run time'?'hide-s':''},h))));
+  runs.forEach(r=>t.append(el('tr',{class:'link',onclick:()=>location.hash='#/run/'+encodeURIComponent(r.runId)},
+    el('td',{},r.headerDate),el('td',{},r.center+' / '+r.tab),el('td',{},srcLabel(r)),
+    el('td',{class:'hide-s'},withTime&&r.kind!=='past-week'?new Date(r.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''),
+    el('td',{},r.verdict==='n8n-not-finished'?'-':`${r.matched}/${r.total} (${pct(r.matched,r.total)}%)`),
+    el('td',{},r.n8nUpdated??'-'),el('td',{},r.claudeWouldUpdate??'-'),el('td',{},verdictPill(r)))));
+  return t;
+}
+
+/* ---------- Day by day ---------- */
+async function days(v){
+  const d=await api('/api/runs?weeks='+weeks);
+  const live=d.runs.filter(r=>r.kind!=='past-week').sort((a,b)=>new Date(b.at)-new Date(a.at));
+  const past=d.runs.filter(r=>r.kind==='past-week');
+  v.append(el('h1',{},'Day by day'),el('p',{class:'sub'},'Every button click is a run. Each run shows how many cells n8n updated and how many Claude would update for next week. Open a run for the cell-by-cell comparison.'),
+    d.demo?el('div',{class:'note'},'Sample data. These numbers are generated for layout only and say nothing about real behaviour.'):'');
+  const byDay={};live.forEach(r=>{const k=new Date(r.at).toLocaleDateString([], {weekday:'long',month:'long',day:'numeric',year:'numeric'});(byDay[k]??=[]).push(r)});
+  const dk=Object.keys(byDay);
+  v.append(el('h3',{},'Button clicks, by day'));
+  if(!dk.length)v.append(el('div',{class:'section'},el('div',{class:'empty'},'No button clicks recorded yet. Click Schedule Sync on a sheet whose center is switched on and the run appears here once n8n finishes.')));
+  dk.forEach(k=>{const rs=byDay[k];const done=rs.filter(r=>r.verdict!=='n8n-not-finished');
+    v.append(el('div',{class:'section'},el('div',{class:'day'},el('h2',{style:'margin:0'},k),el('span',{class:'lbl'},`${rs.length} run${rs.length>1?'s':''} · ${done.reduce((a,r)=>a+r.matched,0)} of ${done.reduce((a,r)=>a+r.total,0)} cells match`)),runTable(rs,true)))});
+  v.append(el('h3',{},'Past weeks (compared against n8n\'s column as it is now)'));
+  const byWeek={};past.forEach(r=>(byWeek[r.headerDate]??=[]).push(r));
+  const wk=Object.keys(byWeek).sort((a,b)=>mdy(b)-mdy(a));
+  if(!wk.length)v.append(el('div',{class:'section'},el('div',{class:'empty'},'No past weeks loaded yet. They fill in a minute or two after the service starts.')));
+  wk.forEach(k=>{const rs=byWeek[k];v.append(el('div',{class:'section'},el('div',{class:'day'},el('h2',{style:'margin:0'},'Week of '+k),el('span',{class:'lbl'},`${rs.reduce((a,r)=>a+r.matched,0)} of ${rs.reduce((a,r)=>a+r.total,0)} cells match`)),runTable(rs,false)))});
+}
+
+/* ---------- One run ---------- */
+async function runPage(v,id){
+  const r=await api('/api/runs/'+encodeURIComponent(id));
+  const rows=r.rows||[];let filter='all',q='';
+  const lines=(a,b)=>{ // highlight lines of `a` that differ from `b`
+    const bl=norm(b).split('\n');return norm(a).split('\n').map((l,i)=>el('div',{style:l!==bl[i]&&b!=null?'background:color-mix(in srgb,var(--bad) 18%,transparent);border-radius:3px':''},l||' '))};
+  const info=el('div',{class:'cards'},
+    [[r.headerDate,'schedule week (new column)'],[`${r.matched}/${r.total}`,'cells the same as n8n'],[r.n8nUpdated??'-','cells n8n updated'],[r.claudeWouldUpdate??'-','cells Claude would update']].map(([b,l])=>el('div',{class:'card'},el('div',{class:'big'},b),el('div',{class:'lbl'},l))));
+  const tbody=el('tbody');
+  const F={all:()=>true,n8n:x=>norm(x.n8n)!==norm(x.input),claude:x=>norm(x.claude)!==norm(x.input),diff:x=>x.status!=='match',absent:x=>x.attendance==='absent'};
+  const draw=()=>{
+    const list=rows.filter(F[filter]).filter(x=>!q||[x.row,x.input,x.n8n,x.claude].join(' ').toLowerCase().includes(q));
+    tbody.replaceChildren(...(list.length?list.map(x=>el('tr',{},
+      el('td',{},x.row),el('td',{},x.attendance==='absent'?el('span',{class:'pill nf'},'absent'):el('span',{class:'lbl'},'present')),
+      el('td',{},el('pre',{},norm(x.input))),
+      el('td',{class:x.status==='match'?'':'diffc'},x.n8n==null?el('i',{},'(no cell)'):el('pre',{},...lines(x.n8n,x.claude))),
+      el('td',{class:x.status==='match'?'':'diffc'},el('pre',{},...lines(x.claude,x.n8n))),
+      el('td',{},x.status==='match'?el('span',{class:'pill good'},'same'):el('span',{class:'pill review'},(EXPLAIN[x.reason]||[x.reason])[0])))):[el('tr',{},el('td',{colspan:6,class:'empty'},'No students match this filter.'))]));
+  };
+  const btn=(k,t)=>{const b=el('button',{class:k===filter?'on':'',onclick:()=>{filter=k;[...bar.querySelectorAll('button')].forEach(x=>x.className=x.dataset.k===filter?'on':'');draw()}},t);b.dataset.k=k;return b};
+  const bar=el('div',{class:'bar'},btn('all','All students'),btn('diff','Differences only'),btn('n8n','n8n updated'),btn('claude','Claude would update'),btn('absent','Absent'),el('input',{type:'search',placeholder:'Search row or text',oninput:e=>{q=e.target.value.toLowerCase();draw()}}));
+  v.append(el('p',{},el('a',{href:'#/days'},'← Day by day')),el('h1',{},`${r.center} / ${r.tab}`),
+    el('p',{class:'sub'},`${srcLabel(r)}${r.kind!=='past-week'?' · '+new Date(r.at).toLocaleString():''} · rows are sheet row numbers; no student names are stored. Claude's column is what it would write for next week; nothing was written to the sheet.`),
+    r.verdict==='n8n-not-finished'?el('div',{class:'note'},'n8n did not write its new column within the wait window, so there is nothing to compare. Claude\'s output below is still what it would have written.'):'',
+    info,el('div',{class:'section'},bar,el('table',{},el('thead',{},el('tr',{},['Row','Attendance','This week\'s cell','n8n wrote','Claude would write','Result'].map(h=>el('th',{},h)))),tbody)));
+  draw();
+}
+
+/* ---------- Rules ---------- */
+async function rules(v){
+  v.append(el('h1',{},'Rules and conditions'),el('p',{class:'sub'},'Everything the generator does to turn this week\'s cell into next week\'s. The examples are run through the live code with the current curriculum sheet, so what you see is what it would write.'));
+  let d;try{d=await api('/api/rules')}catch(e){v.append(el('div',{class:'note'},e.message));return}
+  v.append(el('div',{class:'section'},el('h2',{},'Waiting for your answer'),el('ul',{style:'margin:0;padding-left:20px'},d.openQuestions.map(q=>el('li',{},q)))));
+  const c=d.curriculum;
+  v.append(el('div',{class:'section'},el('h2',{},'From the curriculum sheet'),el('p',{class:'lbl',style:'margin-top:0'},'Level order, tests, test weeks, novels and holidays are read from the sheet every run. Nothing about them is in the code.'),
+    el('h3',{},'Level order'),...Object.entries(c.levels).map(([s,ls])=>el('div',{style:'margin:6px 0'},el('b',{},s+': '),el('span',{class:'chips',style:'display:inline-flex'},ls.map(l=>el('span',{class:'chip'},l))))),
+    el('details',{},el('summary',{},'Tests and test weeks'),el('table',{},el('tr',{},el('th',{},'Level'),el('th',{},'Test and week')),Object.entries(c.tests).map(([k,t])=>el('tr',{},el('td',{},k),el('td',{},t.map(x=>`${x.exam} @ ${x.week}`).join('   ·   ')))))),
+    el('details',{},el('summary',{},`Holidays (${c.holidays.length})`),el('div',{class:'chips',style:'margin-top:6px'},c.holidays.map(h=>el('span',{class:'chip'},h))))));
+  const STATUS={confirmed:'confirmed by back test',default:'default, not decided',open:'needs your answer','new':'new'};
+  const exampleTable=r=>el('table',{},
+    el('tr',{},['Example','Last week\'s cell','Class date / attendance','Claude writes'].map(h=>el('th',{},h))),
+    r.examples.map(e=>el('tr',{},
+      el('td',{},e.label),el('td',{},el('pre',{},e.input)),el('td',{class:'lbl'},e.date+' · '+e.attendance),
+      el('td',{},el('pre',{},e.output),e.flagCyan?el('span',{class:'pill info'},'cyan flag'):'',e.novelMail?el('span',{class:'pill info'},'novel email'):''))));
+  const ruleCard=r=>el('div',{class:'rule'},
+    el('h4',{},r.title,el('span',{class:'pill '+r.status},STATUS[r.status]||r.status),r.differsFromN8n?el('span',{class:'pill info'},'differs from n8n today'):''),
+    el('div',{class:'lbl',style:'margin-bottom:6px'},r.text),
+    r.examples.length?exampleTable(r):'');
+  [...new Set(d.rules.map(r=>r.cat))].forEach(cat=>v.append(el('div',{class:'section'},el('h2',{},cat),d.rules.filter(r=>r.cat===cat).map(ruleCard))));
+}
+
+/* ---------- router ---------- */
+async function route(){
+  const h=location.hash.replace(/^#/,'')||'/';const v=$('#view');v.replaceChildren();
+  const [,p,arg]=h.match(/^\/([^/]*)\/?(.*)$/)||[];
+  document.querySelectorAll('nav a').forEach(a=>a.className=(a.dataset.r===(p||'home')||(p==='run'&&a.dataset.r==='days'))?'on':'');
+  try{ if(p==='days')await days(v);else if(p==='run')await runPage(v,decodeURIComponent(arg));else if(p==='rules')await rules(v);else await home(v);}
+  catch(e){v.append(el('div',{class:'note'},'Could not load this page: '+e.message))}
+  window.scrollTo(0,0);
+}
+async function jobs(){try{const d=await api('/api/runs?weeks=1');const r=d.jobs.filter(j=>j.status==='running');$('#jobs').textContent=r.length?`${r.length} run in progress, waiting for n8n`:''}catch{}}
+addEventListener('hashchange',route);route();jobs();setInterval(jobs,15000);
+</script>
+</body>
+</html>

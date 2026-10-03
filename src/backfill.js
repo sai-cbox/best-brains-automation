@@ -23,7 +23,7 @@ async function backfill({ center, source, config, reportDir, weeks = 4 }) {
     for (const [input, output] of pairs.slice(-weeks)) {
       const students = studentsFromGrid(grid, input, output.text);
       if (!students.length) continue;
-      const generated = engine.generate(students).map((g, i) => ({ ...g, row: students[i].row }));
+      const generated = engine.generate(students).map((g, i) => ({ ...g, row: students[i].row, input: students[i].last_week_log, attendance: students[i].is_present ? 'present' : 'absent' }));
       const runId = `${center.replace(/\s+/g, '')}-${tab.replace(/\s+/g, '')}-${output.text.replace(/\//g, '')}-past`;
       const report = { ...compareRun({ center, runId, claudeRows: generated, n8nRows: n8nRowsFromGrid(grid, output), headerDate: output.text, compareColour: false }), tab, kind: 'past-week' };
       record(reportDir, report);

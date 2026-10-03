@@ -49,8 +49,9 @@ async function runCenter({ center, source, sink, results, reportDir, forceMode, 
     const dry = mode === 'dry-run';
     const cols = inputDate ? pickColumnsForInput(grid.headerRow, inputDate === 'newest' ? pickColumns(grid.headerRow, { dryRun: false }).input.text : inputDate) : pickColumns(grid.headerRow, { dryRun: dry });
     const students = studentsFromGrid(grid, cols.input, cols.newHeaderDate);          // snapshot taken now
-    const generated = engine.generate(students).map((g, i) => ({ ...g, row: students[i].row }));
-    const runId = `${center.replace(/\s+/g, '')}-${tab.replace(/\s+/g, '')}-${cols.newHeaderDate.replace(/\//g, '')}`;
+    const generated = engine.generate(students).map((g, i) => ({ ...g, row: students[i].row, input: students[i].last_week_log, attendance: students[i].is_present ? 'present' : 'absent' }));
+    const stamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);   // every click is its own run
+    const runId = `${center.replace(/\s+/g, '')}-${tab.replace(/\s+/g, '')}-${cols.newHeaderDate.replace(/\//g, '')}-live${stamp}`;
     if (!dry) {
       await sink.writeNextWeek({ sheetId: c.sheetId, tab, col: cols.input.col + 1, headerDate: cols.newHeaderDate,
         cells: generated.map(g => ({ row: g.row, text: g.next_week_log, needsColor: g.needs_color })) });

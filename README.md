@@ -26,3 +26,10 @@ Never writes a schedule sheet or the portal. Student names never appear; rows ar
 Deploy (host 192.168.86.67): see deploy/ (docker-compose.yml or bb-dashboard.service).
 Needs: nothing from Google. The sheets are read through their public Excel export (anyone-with-link viewer). Set CLAUDE_TRIGGER_TOKEN and CENTERS_JSON (ids are not committed).
 Sample data to see the layout: `node scripts/make-demo.js; DEMO=1 FIXTURE=fixtures/demo.json CLAUDE_TRIGGER_TOKEN=x BACKFILL_WEEKS=6 CENTERS_JSON='{"centers":{"Liberty Hill":{"sheetId":"d","tabs":["Table1 2026"],"generate":"dry-run"}}}' node src/server.js`
+
+## Dashboard pages (http://<host>:8091)
+- Overview: match rate, match by week, why cells differ, runs.
+- Day by day: every button click as its own run (time, cells n8n updated, cells Claude would update), plus past weeks.
+- Run page: every student row, this week's cell, what n8n wrote, what Claude would write, filters and search.
+- Rules: every rule with examples computed live by the engine, the curriculum read from the sheet, and open questions for Sai.
+Sample data for layout: node scripts/make-demo.js; node scripts/seed-demo-live.js fixtures/demo.json /tmp/demo-reports (then run the server with DEMO=1 FIXTURE=fixtures/demo.json REPORT_DIR=/tmp/demo-reports).

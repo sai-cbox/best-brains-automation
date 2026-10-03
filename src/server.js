@@ -11,6 +11,8 @@ const fs = require('fs'), path = require('path');
 const crypto = require('crypto');
 const { runCenter } = require('./run');
 const { backfill } = require('./backfill');
+const { createEngine } = require('./engine');
+const { evaluate, curriculumSummary, OPEN_QUESTIONS } = require('./rules');
 
 function readRuns(reportDir) {
   const dir = path.join(reportDir, 'runs');
@@ -22,7 +24,7 @@ const mdy = d => { const [m, dd, y] = d.split('/').map(Number); return new Date(
 
 function createServer({ source, config, reportDir, token, runOpts = {} }) {
   const jobs = new Map(); // runKey -> { status, startedAt }
-  const dashboard = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
+  const dashboard = fs.readFileSync(path.join(__dirname, 'app.html'), 'utf8');
   const centerFor = id => Object.entries(config.centers).find(([, c]) => c.sheetId && c.sheetId === id);
 
   async function startTrigger(center, tab) {
@@ -35,6 +37,15 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
       .catch(e => { job.status = 'error'; job.error = e.message; console.error(`${key}: ${e.message}`); });
     job.promise = null;
     return 'started';
+  }
+
+  let rulesCache = null;
+  async function rulesPayload() {
+    if (rulesCache && Date.now() - rulesCache.at < 60e3) return rulesCache.body;
+    const cur = await source.readCurriculum();
+    const body = { rules: evaluate(createEngine(cur), cur), curriculum: curriculumSummary(cur), openQuestions: OPEN_QUESTIONS };
+    rulesCache = { at: Date.now(), body };
+    return body;
   }
 
   const send = (res, code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(typeof body === 'string' ? body : JSON.stringify(body)); };
@@ -51,6 +62,9 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
         const cutoff = Date.now() - weeks * 7 * 864e5;
         const runs = readRuns(reportDir).filter(r => mdy(r.headerDate) >= cutoff).sort((a, b) => mdy(b.headerDate) - mdy(a.headerDate) || a.center.localeCompare(b.center)).map(summary);
         return send(res, 200, { runs, jobs: [...jobs].map(([k, j]) => ({ key: k, status: j.status, startedAt: j.startedAt, error: j.error })), demo: !!process.env.DEMO });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/rules') {
+        try { return send(res, 200, await rulesPayload()); } catch (e) { return send(res, 502, { error: `Could not read the curriculum sheet: ${e.message}` }); }
       }
       const m = url.pathname.match(/^\/api\/runs\/([\w.-]+)$/);
       if (req.method === 'GET' && m) {
