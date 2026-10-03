@@ -1,4 +1,4 @@
-# On the host (192.168.86.67):  cp .env.example .env  (fill it in)  &&  docker compose up -d --build
+# On the host:  cp .env.example .env  (fill it in)  &&  docker compose up -d --build
 services:
   bb-dashboard:
     build: ..
@@ -6,10 +6,8 @@ services:
     ports: ["8091:8091"]
     env_file: .env
     environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_sa.json
       BACKFILL_WEEKS: "6"
     volumes:
-      - ./google_sa.json:/run/secrets/google_sa.json:ro
       - reports:/data/reports
 volumes:
   reports:

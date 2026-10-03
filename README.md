@@ -24,5 +24,5 @@ The dashboard (`GET /`) shows live runs plus the last N past weeks (BACKFILL_WEE
 Never writes a schedule sheet or the portal. Student names never appear; rows are sheet row numbers.
 
 Deploy (host 192.168.86.67): see deploy/ (docker-compose.yml or bb-dashboard.service).
-Needs: service account key with Viewer on the curriculum sheet and each center sheet; CLAUDE_TRIGGER_TOKEN; CENTERS_JSON (ids are not committed).
+Needs: a Google API key (sheets are link-shared as viewer, so no service account); CLAUDE_TRIGGER_TOKEN; CENTERS_JSON (ids are not committed).
 Sample data to see the layout: `node scripts/make-demo.js; DEMO=1 FIXTURE=fixtures/demo.json CLAUDE_TRIGGER_TOKEN=x BACKFILL_WEEKS=6 CENTERS_JSON='{"centers":{"Liberty Hill":{"sheetId":"d","tabs":["Table1 2026"],"generate":"dry-run"}}}' node src/server.js`

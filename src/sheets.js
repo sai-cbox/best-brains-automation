@@ -19,7 +19,11 @@ class FixtureSource {
 class GoogleSource {
   constructor() {
     const { google } = require('googleapis');
-    const auth = new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] });
+    // Public "anyone with the link can view" sheets: a plain API key is enough (GOOGLE_API_KEY).
+    // Otherwise a service account (GOOGLE_APPLICATION_CREDENTIALS), read-only scope.
+    const auth = process.env.GOOGLE_API_KEY
+      ? process.env.GOOGLE_API_KEY
+      : new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] });
     this.sheets = google.sheets({ version: 'v4', auth });
   }
   async _values(sheetId, tab) {
