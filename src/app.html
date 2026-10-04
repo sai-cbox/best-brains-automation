@@ -226,7 +226,7 @@ async function rules(v){
 
   v.append(el('div',{class:'section'},el('h2',{},'How to read this page'),
     el('ol',{style:'margin:0;padding-left:20px'},
-      el('li',{},el('b',{},'WHEN'),' is the situation. ',el('b',{},'THEN'),' is exactly what ends up in next week\'s cell.'),
+      el('li',{},el('b',{},'WHEN'),' is the situation. ',el('b',{},'THEN'),' is exactly what ends up in next week\'s cell.'),el('li',{},el('b',{},'New column'),' means the column being created, next week\'s class date. "The week after the new column" is one week later still.'),
       el('li',{},'Rules run top to bottom through the groups: read the cell, clean it, check attendance, move to the next chapter, then holidays, jump notes and tests.'),
       el('li',{},'Each row is one scenario. The middle column is what staff typed this week, the right column is what the generator writes for next week. Both are real examples, checked against the code.'),el('li',{},'Not how it should work? Press ',el('b',{},'Edit'),' on that row, change the boxes and send it. Nothing changes until Claude builds and tests it.'),
       el('li',{},'Tags: ',el('span',{class:'pill confirmed'},'Confirmed'),' matches the Liberty Hill history. ',el('span',{class:'pill default'},'Default'),' is applied but Sai has not decided. ',el('span',{class:'pill info'},'differs from n8n today'),' means Claude intentionally behaves differently from n8n, so a difference on the comparison pages can be expected.'),
