@@ -39,7 +39,7 @@ td.diffc{background:var(--badbg)}td.same{background:transparent}
 @media (max-width:640px){.exbox{grid-template-columns:1fr}.exbox .arrow{transform:rotate(90deg)}}
 textarea{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
 input[type=text]{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
-.rt td:nth-child(3) pre.res{color:var(--ok);font-weight:600}.rt td{vertical-align:top}
+.rt td:nth-child(3) pre.res{color:var(--ok);font-weight:600}.rt td{vertical-align:top}.lbl b.abs{color:var(--bad)}.lbl b.pre-s{color:var(--ok)}
 .editbox{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px}.editgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 tr.editrow td{border-bottom:1px solid var(--line)}
 details{margin:6px 0}summary{cursor:pointer;font-weight:600}
@@ -183,10 +183,12 @@ async function runPage(v,id){
 /* ---------- Rules ---------- */
 const STATUS={confirmed:'Confirmed by back test',default:'Default - not decided yet',open:'Needs your answer'};
 const exBox=(x)=>el('div',{class:'exbox'},
-  el('div',{},el('div',{class:'k'},'THIS WEEK\'S CELL'),el('pre',{},x.cell),el('div',{class:'lbl'},`${x.attendance==='absent'?'Absent':'Present'}${x.book?', book collected':''} · new column dated ${x.date}`)),
+  el('div',{},el('div',{class:'k'},'THIS WEEK\'S CELL'),el('pre',{},x.cell),el('div',{class:'lbl'},attLine(x),x.showDate?` · new column ${x.date}`:'')),
   el('div',{class:'arrow'},'→'),
   el('div',{},el('div',{class:'k'},'NEXT WEEK, CLAUDE WRITES'),el('pre',{class:'res'},x.result),x.cyan?el('div',{class:'lbl'},'cell is coloured cyan for staff to check'):''));
 const cellBox=(text,sub,cls)=>el('div',{},el('pre',{class:cls||''},text),sub?el('div',{class:'lbl'},sub):'');
+// "Present" / "Absent, book collected" and, only when it matters, "week before a holiday". No raw dates.
+const attLine=x=>el('span',{},el('b',{class:x.attendance==='absent'?'abs':'pre-s'},x.attendance==='absent'?'Absent':'Present'),x.book?', book collected':'',x.note?` · ${x.note}`:'');
 const tags=r=>el('div',{class:'chips',style:'gap:4px;margin-top:6px'},el('span',{class:'chip'},r.id),el('span',{class:'pill '+(r.status||'confirmed')},STATUS[r.status||'confirmed']),r.differs?el('span',{class:'pill info'},'differs from n8n today'):'');
 function ruleRows(g,items,d,afterSend){
   const rows=[];
@@ -194,7 +196,7 @@ function ruleRows(g,items,d,afterSend){
     const x=r.example, editRow=el('tr',{class:'editrow',style:'display:none'});
     const tr=el('tr',{id:r.id},
       el('td',{},el('div',{style:'font-weight:600'},r.when),el('div',{class:'lbl',style:'margin-top:2px'},'Then: '+r.then),tags(r)),
-      el('td',{},x?cellBox(x.cell,`${x.attendance==='absent'?'Absent':'Present'}${x.book?', book collected':''} · new column ${x.date}`):el('span',{class:'lbl'},'Applies to the whole sheet, not to one cell')),
+      el('td',{},x?cellBox(x.cell,attLine(x)):el('span',{class:'lbl'},'Applies to the whole sheet, not to one cell')),
       el('td',{},x?cellBox(x.result,x.cyan?'coloured cyan for staff to check':'','res'):el('span',{class:'lbl'},'-')),
       el('td',{style:'white-space:nowrap'},el('button',{onclick:()=>{editRow.style.display=editRow.style.display==='none'?'':'none'}},'Edit')));
     // edit form: same fixed format, pre-filled; sends a CHANGE proposal for this rule
@@ -235,7 +237,7 @@ async function rules(v){
     tDate=el('input',{type:'text',value:'10/13/2026',size:'11'}),tBook=el('input',{type:'checkbox'}),tOut=el('div',{style:'margin-top:10px'});
   const tryIt=async()=>{tOut.replaceChildren(el('span',{class:'lbl'},'Working...'));
     try{const r=await fetch('/api/rules/try',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cell:tCell.value,attendance:tAtt.value,date:tDate.value,book:tBook.checked})});const j=await r.json();if(!r.ok)throw new Error(j.error);
-      tOut.replaceChildren(exBox({cell:tCell.value,attendance:tAtt.value,book:tBook.checked,date:tDate.value,result:j.result||'(nothing: the line is not carried over)',cyan:j.cyan}))}
+      tOut.replaceChildren(exBox({cell:tCell.value,attendance:tAtt.value,book:tBook.checked,date:tDate.value,showDate:true,result:j.result||'(nothing: the line is not carried over)',cyan:j.cyan}))}
     catch(e){tOut.replaceChildren(el('div',{class:'note'},e.message))}};
   v.append(el('div',{class:'section'},el('h2',{},'Try a cell'),el('p',{class:'lbl',style:'margin-top:0'},'Type a cell the way staff would, pick attendance and the date of the new column, and see what the generator would write. Nothing is saved or written to any sheet.'),
     el('div',{class:'bar'},el('div',{style:'flex:1;min-width:220px'},tCell),el('label',{},'Attendance ',tAtt),el('label',{},'New column date ',tDate),el('label',{},tBook,' book collected'),el('button',{onclick:tryIt},'Show next week')),tOut));

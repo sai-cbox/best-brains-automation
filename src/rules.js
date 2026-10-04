@@ -15,7 +15,8 @@
 // Every example here is run through the real engine by test/rules.test.js, so the page can never show an example the code would not produce.
 
 const D = '10/13/2026';   // an ordinary class week: neither this date nor the next week is a holiday
-const ex = (cell, attendance, result, o = {}) => ({ cell, attendance, date: o.date || D, result, ...(o.book ? { book: true } : {}) });
+const NOTE = { '08/31/2026': 'week before a holiday', '09/07/2026': 'holiday week' };   // plain words shown instead of the raw date
+const ex = (cell, attendance, result, o = {}) => ({ cell, attendance, date: o.date || D, result, ...(NOTE[o.date] ? { note: NOTE[o.date] } : {}), ...(o.book ? { book: true } : {}) });
 const PRESENT = 'present', ABSENT = 'absent';
 
 const RULES = [
@@ -25,15 +26,12 @@ const RULES = [
     { id: 'R1.3', when: 'Cell colour is pink, orange, white or cyan', then: 'Student is present. (Pink cells usually carry "PT Yes".)', status: 'confirmed', example: ex('E JrBg A', PRESENT, 'E JrBg B') },
     { id: 'R1.4', when: 'A cell has several lines', then: 'Each line (Maths, English, PT) is handled on its own. Blank lines are ignored.', status: 'confirmed', example: ex('E JrBg A\nPT Yes', PRESENT, 'E JrBg B\nPT') },
   ]},
-  { cat: '2. Cleaning each line', blurb: 'Tidying what staff typed before any decision is made.', items: [
-    { id: 'R2.1', when: 'Line starts with PT', then: 'Written as just "PT". Yes / No / MKP / dates staff added are cleared.', status: 'confirmed', example: ex('PT Yes', PRESENT, 'PT') },
-    { id: 'R2.2', when: 'Line says ALL DONE or ABSENT on its own line (including common misspellings), or "collected book"', then: 'The line is not carried to next week.', status: 'confirmed', example: ex('E JrBg A\nABSENT', PRESENT, 'E JrBg B') },
-    { id: 'R2.3', when: 'Line starts with **', then: 'The ** is ignored.', status: 'confirmed', example: ex('**E JrBg A', PRESENT, 'E JrBg B') },
-    { id: 'R2.4', when: 'No space before a bracket, for example "E(MT1 NXT)"', then: 'A space is added.', status: 'confirmed', example: ex('E(MT1 NXT)', PRESENT, 'E (MT1 NXT)') },
-    { id: 'R2.5', when: 'Level typed with the letter O instead of zero ("Ob" for "0b")', then: 'Matched to the real level in the curriculum sheet and written with the zero.', status: 'default', differs: true, example: ex('M Ob C', PRESENT, 'M 0b D') },
-    { id: 'R2.6', when: 'Line starts with M', then: 'Maths. Anything else is English.', status: 'confirmed', example: ex('M SrBg B', PRESENT, 'M SrBg C') },
-    { id: 'R2.7', when: 'Reading the level', then: 'The first word that is a level in the curriculum sheet for that subject. If none matches, the second word.', status: 'confirmed', example: ex('Eng J1 J', PRESENT, 'E J1 K') },
-    { id: 'R2.8', when: 'The word CNTNU appears in the line', then: 'It is ignored while reading the line (it is added back when needed).', status: 'confirmed', example: ex('M 5 G CNTNU\nPT', PRESENT, 'M 5 H (MT1 NXT)\nPT') },
+  { cat: '2. Basics (the default)', blurb: 'What happens to a normal cell when nothing special is going on.', items: [
+    { id: 'R2.1', when: 'Student was present and the line is a normal chapter', then: 'Move to the next letter of the alphabet.', status: 'confirmed', example: ex('E K1 D', PRESENT, 'E K1 E') },
+    { id: 'R2.2', when: 'Student was absent', then: 'Repeat the same line, so the student does the same chapter again.', status: 'confirmed', example: ex('E K1 D', ABSENT, 'E K1 D') },
+    { id: 'R2.3', when: 'The line starts with M', then: 'It is Maths. Any other line is English.', status: 'confirmed', example: ex('M 4 B', PRESENT, 'M 4 C') },
+    { id: 'R2.4', when: 'The cell has Maths, English and PT lines', then: 'Each line moves on by itself. PT stays as just "PT".', status: 'confirmed', example: ex('M 4 B\nE K1 D\nPT YES', PRESENT, 'M 4 C\nE K1 E\nPT') },
+    { id: 'R2.5', when: 'The subject is written out, like "Eng" or "Math"', then: 'Written back short: "E" or "M".', status: 'confirmed', example: ex('Eng K1 D', PRESENT, 'E K1 E') },
   ]},
   { cat: '3. Attendance', blurb: 'Who moves on and who repeats the same chapter.', items: [
     { id: 'R3.1', when: 'MKP (makeup) appears anywhere in the cell', then: 'Student counts as present and book collected, even on a yellow cell.', status: 'confirmed', example: ex('M JrBg A MKP', ABSENT, 'M JrBg B') },
@@ -44,7 +42,6 @@ const RULES = [
   ]},
   { cat: '4. Moving to the next chapter', blurb: 'How the chapter letter and level advance.', items: [
     { id: 'R4.1', when: 'The chapter is the last single capital letter outside brackets', then: 'That is the chapter the student is on. If there is none, the line is copied unchanged for staff to fix.', status: 'confirmed', example: ex('M 3G', PRESENT, 'M 3G') },
-    { id: 'R4.2', when: 'Normal line', then: 'Next letter of the alphabet.', status: 'confirmed', example: ex('E JrBg D', PRESENT, 'E JrBg E') },
     { id: 'R4.3', when: 'Chapter is Z', then: 'Chapter A of the next level, in the order of the curriculum sheet.', status: 'confirmed', example: ex('E JrBg Z', PRESENT, 'E SrBg A') },
     { id: 'R4.4', when: 'On the last level in the sheet, chapter Z, and PASS', then: 'Written as "ALL DONE".', status: 'confirmed', example: ex('M 8 Z PASS', PRESENT, 'M ALL DONE') },
     { id: 'R4.5', when: 'Final test (FT) with PASS, and not a review', then: 'Counts as chapter Z, whatever letter was written, so the student goes to the next level.', status: 'confirmed', differs: true, example: ex('E JrBg C & FT PASS', PRESENT, 'E SrBg A') },
