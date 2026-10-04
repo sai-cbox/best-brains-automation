@@ -194,7 +194,7 @@ function ruleRows(g,items,d,afterSend){
     const x=r.example, editRow=el('tr',{class:'editrow',style:'display:none'});
     const tr=el('tr',{id:r.id},
       el('td',{},el('div',{style:'font-weight:600'},r.when),el('div',{class:'lbl',style:'margin-top:2px'},'Then: '+r.then),tags(r)),
-      el('td',{},x?cellBox(x.cell,`${x.attendance==='absent'?'Absent':'Present'}${x.book?', book collected':''} · new column ${x.date}`):el('span',{class:'lbl'},'No single-cell example')),
+      el('td',{},x?cellBox(x.cell,`${x.attendance==='absent'?'Absent':'Present'}${x.book?', book collected':''} · new column ${x.date}`):el('span',{class:'lbl'},'Applies to the whole sheet, not to one cell')),
       el('td',{},x?cellBox(x.result,x.cyan?'coloured cyan for staff to check':'','res'):el('span',{class:'lbl'},'-')),
       el('td',{style:'white-space:nowrap'},el('button',{onclick:()=>{editRow.style.display=editRow.style.display==='none'?'':'none'}},'Edit')));
     // edit form: same fixed format, pre-filled; sends a CHANGE proposal for this rule
@@ -268,7 +268,6 @@ async function rules(v){
       el('div',{class:'kv'},el('div',{class:'k'},'WHEN'),el('div',{},p.when),el('div',{class:'k'},'THEN'),el('div',{},p.then)),
       exBox({cell:p.cell,attendance:p.attendance,date:p.date,result:p.expected}),p.why?el('div',{class:'lbl',style:'margin-top:6px'},'Why: '+p.why):''))));
 
-  v.append(el('div',{class:'section'},el('h2',{},'Waiting for your answer'),el('ul',{style:'margin:0;padding-left:20px'},d.openQuestions.map(q=>el('li',{},q)))));
   const c=d.curriculum;
   v.append(el('div',{class:'section'},el('h2',{},'From the curriculum sheet'),el('p',{class:'lbl',style:'margin-top:0'},'Level order, tests, test weeks, novels and holidays are read from the sheet every run. Nothing about them is in the code.'),
     el('h3',{},'Level order'),...Object.entries(c.levels).map(([s,ls])=>el('div',{style:'margin:6px 0'},el('b',{},s+': '),el('span',{class:'chips',style:'display:inline-flex'},ls.map(l=>el('span',{class:'chip'},l))))),
