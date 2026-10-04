@@ -39,6 +39,9 @@ td.diffc{background:var(--badbg)}td.same{background:transparent}
 @media (max-width:640px){.exbox{grid-template-columns:1fr}.exbox .arrow{transform:rotate(90deg)}}
 textarea{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
 input[type=text]{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.rt td:nth-child(3) pre.res{color:var(--ok);font-weight:600}.rt td{vertical-align:top}
+.editbox{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px}.editgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+tr.editrow td{border-bottom:1px solid var(--line)}
 details{margin:6px 0}summary{cursor:pointer;font-weight:600}
 .rule{border-top:1px solid var(--line);padding:14px 0}.rule:first-child{border-top:0}.rule h4{margin:0 0 4px;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .steps{list-style:none;margin:10px 0 0;padding:0}.steps li{display:flex;gap:10px;padding:6px 0;align-items:flex-start}
@@ -183,10 +186,36 @@ const exBox=(x)=>el('div',{class:'exbox'},
   el('div',{},el('div',{class:'k'},'THIS WEEK\'S CELL'),el('pre',{},x.cell),el('div',{class:'lbl'},`${x.attendance==='absent'?'Absent':'Present'}${x.book?', book collected':''} · new column dated ${x.date}`)),
   el('div',{class:'arrow'},'→'),
   el('div',{},el('div',{class:'k'},'NEXT WEEK, CLAUDE WRITES'),el('pre',{class:'res'},x.result),x.cyan?el('div',{class:'lbl'},'cell is coloured cyan for staff to check'):''));
-const ruleCard=r=>el('div',{class:'rule',id:r.id},
-  el('div',{class:'rhead'},el('span',{class:'chip'},r.id),r.status&&r.status!=='confirmed'?el('span',{class:'pill '+r.status},STATUS[r.status]):el('span',{class:'pill confirmed'},STATUS.confirmed),r.differs?el('span',{class:'pill info'},'differs from n8n today'):''),
-  el('div',{class:'kv'},el('div',{class:'k'},'WHEN'),el('div',{},r.when),el('div',{class:'k'},'THEN'),el('div',{},r.then)),
-  r.example?exBox(r.example):el('div',{class:'lbl',style:'margin-top:6px'},'No single-cell example (this rule is about how the sheet is read).'));
+const cellBox=(text,sub,cls)=>el('div',{},el('pre',{class:cls||''},text),sub?el('div',{class:'lbl'},sub):'');
+const tags=r=>el('div',{class:'chips',style:'gap:4px;margin-top:6px'},el('span',{class:'chip'},r.id),el('span',{class:'pill '+(r.status||'confirmed')},STATUS[r.status||'confirmed']),r.differs?el('span',{class:'pill info'},'differs from n8n today'):'');
+function ruleRows(g,items,d,afterSend){
+  const rows=[];
+  items.forEach(r=>{
+    const x=r.example, editRow=el('tr',{class:'editrow',style:'display:none'});
+    const tr=el('tr',{id:r.id},
+      el('td',{},el('div',{style:'font-weight:600'},r.when),el('div',{class:'lbl',style:'margin-top:2px'},'Then: '+r.then),tags(r)),
+      el('td',{},x?cellBox(x.cell,`${x.attendance==='absent'?'Absent':'Present'}${x.book?', book collected':''} · new column ${x.date}`):el('span',{class:'lbl'},'No single-cell example')),
+      el('td',{},x?cellBox(x.result,x.cyan?'coloured cyan for staff to check':'','res'):el('span',{class:'lbl'},'-')),
+      el('td',{style:'white-space:nowrap'},el('button',{onclick:()=>{editRow.style.display=editRow.style.display==='none'?'':'none'}},'Edit')));
+    // edit form: same fixed format, pre-filled; sends a CHANGE proposal for this rule
+    const f={when:el('textarea',{rows:'2',style:'width:100%'}),then:el('textarea',{rows:'2',style:'width:100%'}),cell:el('textarea',{rows:'2',style:'width:100%'}),
+      attendance:el('select',{},el('option',{value:'present'},'present'),el('option',{value:'absent'},'absent')),date:el('input',{type:'text',size:'11'}),expected:el('textarea',{rows:'2',style:'width:100%'}),
+      why:el('textarea',{rows:'2',style:'width:100%',placeholder:'What is wrong with the current rule?'}),by:el('input',{type:'text',size:'14',placeholder:'Your name'})};
+    f.when.value=r.when;f.then.value=r.then;f.cell.value=x?x.cell:'';f.attendance.value=x?x.attendance:'present';f.date.value=x?x.date:'10/13/2026';f.expected.value=x?x.result:'';
+    const msg=el('div',{});
+    const lab=(t,i)=>el('label',{style:'display:block;margin:0 0 8px'},el('span',{class:'k',style:'display:block'},t),i);
+    editRow.append(el('td',{colspan:'4'},el('div',{class:'editbox'},
+      el('div',{class:'lbl',style:'margin:0 0 8px'},`Change ${r.id}: edit anything that is not right and send it. The rule stays as it is until Claude builds and tests your change.`),
+      el('div',{class:'editgrid'},el('div',{},lab('WHEN',f.when),lab('THEN',f.then)),el('div',{},lab('EXAMPLE: THIS WEEK\'S CELL',f.cell),el('div',{class:'bar',style:'margin:0 0 8px'},lab('ATTENDANCE',f.attendance),lab('NEW COLUMN DATE',f.date))),el('div',{},lab('EXAMPLE: NEXT WEEK SHOULD BE',f.expected))),
+      lab('WHAT IS WRONG (optional)',f.why),
+      el('div',{class:'bar',style:'margin:0'},f.by,el('button',{class:'on',onclick:async()=>{
+        const body={ruleId:r.id,title:'Change to '+r.id,group:g.cat};for(const k of Object.keys(f))body[k]=f[k].value;
+        const res=await fetch('/api/rules/propose',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await res.json();
+        if(!res.ok){msg.replaceChildren(el('div',{class:'note'},j.error));return}afterSend()}},'Send change to Claude'),el('button',{onclick:()=>{editRow.style.display='none'}},'Cancel')),msg)));
+    rows.push(tr,editRow);
+  });
+  return rows;
+}
 
 async function rules(v){
   v.append(el('h1',{},'Rules and conditions'),el('p',{class:'sub'},'Every rule the generator uses to turn this week\'s cell into next week\'s, in the order it checks them. Each rule is one WHEN, one THEN and, where it fits, a worked example that is checked against the real code.'));
@@ -197,7 +226,7 @@ async function rules(v){
     el('ol',{style:'margin:0;padding-left:20px'},
       el('li',{},el('b',{},'WHEN'),' is the situation. ',el('b',{},'THEN'),' is exactly what ends up in next week\'s cell.'),
       el('li',{},'Rules run top to bottom through the groups: read the cell, clean it, check attendance, move to the next chapter, then holidays, jump notes and tests.'),
-      el('li',{},'The grey box under a rule is a real example: the left side is what staff typed, the right side is what the generator writes.'),
+      el('li',{},'Each row is one scenario. The middle column is what staff typed this week, the right column is what the generator writes for next week. Both are real examples, checked against the code.'),el('li',{},'Not how it should work? Press ',el('b',{},'Edit'),' on that row, change the boxes and send it. Nothing changes until Claude builds and tests it.'),
       el('li',{},'Tags: ',el('span',{class:'pill confirmed'},'Confirmed'),' matches the Liberty Hill history. ',el('span',{class:'pill default'},'Default'),' is applied but Sai has not decided. ',el('span',{class:'pill info'},'differs from n8n today'),' means Claude intentionally behaves differently from n8n, so a difference on the comparison pages can be expected.'),
       el('li',{},'Levels, tests, test weeks, novels and holidays are never in the code. They come from the curriculum sheet (bottom of this page).'))));
 
@@ -214,7 +243,7 @@ async function rules(v){
   // Rule list with search and group jump
   let q='';const list=el('div',{});
   const draw=()=>{list.replaceChildren(...d.rules.map(g=>{const items=g.items.filter(r=>!q||[r.id,r.when,r.then,r.example?.cell,r.example?.result].join(' ').toLowerCase().includes(q));
-    return items.length?el('div',{class:'section',id:'g-'+g.cat.split('.')[0]},el('h2',{},g.cat),g.blurb?el('p',{class:'lbl',style:'margin-top:-6px'},g.blurb):'',...items.map(ruleCard)):''}))};
+    return items.length?el('div',{class:'section',id:'g-'+g.cat.split('.')[0]},el('h2',{},g.cat),g.blurb?el('p',{class:'lbl',style:'margin-top:-6px'},g.blurb):'',el('table',{class:'rt'},el('thead',{},el('tr',{},el('th',{style:'width:38%'},'Scenario'),el('th',{style:'width:24%'},'Example: this week'),el('th',{style:'width:24%'},'Example: next week'),el('th',{},''))),el('tbody',{},...ruleRows(g,items,d,()=>{v.replaceChildren();rules(v)})))):''}))};
   draw();
   v.append(el('div',{class:'bar'},el('b',{},`${total} rules`),el('input',{type:'search',placeholder:'Search the rules (e.g. holiday, PASS, MKP)',size:'36',oninput:e=>{q=e.target.value.toLowerCase();draw()}}),el('span',{class:'lbl'},'Jump to group:'),
     ...d.rules.map(g=>el('a',{class:'chip',title:g.cat,href:'javascript:void 0',onclick:()=>{const t=document.getElementById('g-'+g.cat.split('.')[0]);t&&t.scrollIntoView({behavior:'smooth'})}},g.cat.split('.')[0]))),list);
@@ -234,7 +263,7 @@ async function rules(v){
   v.append(el('div',{class:'section',id:'propose'},el('h2',{},'Propose a new rule'),
     el('p',{class:'lbl',style:'margin-top:0'},'Fill every starred box. A proposal does not change the generator by itself: Claude reads it, builds it, runs the example as an automatic test, and only then does it appear in the list above. Tip: use "Try a cell" first to see what the generator writes today, then enter what it should have written.'),form));
   if(d.proposals&&d.proposals.length)v.append(el('div',{class:'section'},el('h2',{},`Proposed rules waiting for Claude (${d.proposals.length})`),
-    ...d.proposals.map(p=>el('div',{class:'rule'},el('div',{class:'rhead'},el('span',{class:'chip'},p.id),el('span',{class:'pill default'},'Proposed - not in the generator yet'),el('span',{class:'lbl'},`${p.by} · ${new Date(p.at).toLocaleDateString()} · ${p.group}`)),
+    ...d.proposals.map(p=>el('div',{class:'rule'},el('div',{class:'rhead'},el('span',{class:'chip'},p.id),el('span',{class:'pill default'},p.ruleId?`Change to ${p.ruleId} - not applied yet`:'Proposed - not in the generator yet'),el('span',{class:'lbl'},`${p.by} · ${new Date(p.at).toLocaleDateString()} · ${p.group}`)),
       el('div',{style:'font-weight:600;margin:4px 0'},p.title),
       el('div',{class:'kv'},el('div',{class:'k'},'WHEN'),el('div',{},p.when),el('div',{class:'k'},'THEN'),el('div',{},p.then)),
       exBox({cell:p.cell,attendance:p.attendance,date:p.date,result:p.expected}),p.why?el('div',{class:'lbl',style:'margin-top:6px'},'Why: '+p.why):''))));

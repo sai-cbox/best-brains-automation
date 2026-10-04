@@ -122,6 +122,9 @@ function validateProposal(body) {
     if (f.options && v && !f.options.includes(v)) errors.push(`${f.label} must be ${f.options.join(' or ')}`);
     clean[f.key] = v;
   }
+  // optional: the proposal is a change to an existing rule
+  const rid = typeof body?.ruleId === 'string' ? body.ruleId.trim() : '';
+  if (rid) { if (!/^R\d+\.\d+$/.test(rid)) errors.push('ruleId looks wrong'); else clean.ruleId = rid; }
   if (clean.date && !/^\d{2}\/\d{2}\/\d{4}$/.test(clean.date)) errors.push('Example date must look like 10/13/2026');
   return { ok: !errors.length, errors, clean };
 }
