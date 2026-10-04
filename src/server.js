@@ -11,7 +11,8 @@ const fs = require('fs'), path = require('path');
 const crypto = require('crypto');
 const { runCenter } = require('./run');
 const { backfill } = require('./backfill');
-const { RULES, curriculumSummary, OPEN_QUESTIONS } = require('./rules');
+const { createEngine } = require('./engine');
+const { RULES, curriculumSummary, OPEN_QUESTIONS, PROPOSAL_FIELDS, validateProposal } = require('./rules');
 
 function readRuns(reportDir) {
   const dir = path.join(reportDir, 'runs');
@@ -51,10 +52,12 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
   async function rulesPayload() {
     if (rulesCache && Date.now() - rulesCache.at < 60e3) return rulesCache.body;
     const cur = await source.readCurriculum();
-    const body = { rules: RULES, curriculum: curriculumSummary(cur), openQuestions: OPEN_QUESTIONS };
-    rulesCache = { at: Date.now(), body };
+    const body = { rules: RULES, curriculum: curriculumSummary(cur), openQuestions: OPEN_QUESTIONS, fields: PROPOSAL_FIELDS };
+    rulesCache = { at: Date.now(), body, engine: createEngine(cur) };
     return body;
   }
+  const proposalsFile = path.join(reportDir, 'proposed-rules.jsonl');
+  const readProposals = () => fs.existsSync(proposalsFile) ? fs.readFileSync(proposalsFile, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).reverse() : [];
 
   const send = (res, code, body, type = 'application/json') => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(typeof body === 'string' ? body : JSON.stringify(body)); };
   const readBody = req => new Promise(r => { let b = ''; req.on('data', c => { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', () => { try { r(JSON.parse(b || '{}')); } catch { r(null); } }); });
@@ -73,7 +76,26 @@ function createServer({ source, config, reportDir, token, runOpts = {} }) {
       }
       if (req.method === 'GET' && url.pathname === '/api/live') return send(res, 200, { now: new Date().toISOString(), jobs: allJobs, events });
       if (req.method === 'GET' && url.pathname === '/api/rules') {
-        try { return send(res, 200, await rulesPayload()); } catch (e) { return send(res, 502, { error: `Could not read the curriculum sheet: ${e.message}` }); }
+        try { return send(res, 200, { ...(await rulesPayload()), proposals: readProposals() }); } catch (e) { return send(res, 502, { error: `Could not read the curriculum sheet: ${e.message}` }); }
+      }
+      if (req.method === 'POST' && url.pathname === '/api/rules/try') {
+        // Read-only: run one cell through the generator so a person can see what it would write. Writes nothing.
+        const b = await readBody(req);
+        const cell = typeof b?.cell === 'string' ? b.cell.slice(0, 500) : '';
+        if (!cell.trim() || !/^\d{2}\/\d{2}\/\d{4}$/.test(b?.date || '')) return send(res, 400, { error: 'need a cell and a date like 10/13/2026' });
+        try { await rulesPayload(); } catch (e) { return send(res, 502, { error: `Could not read the curriculum sheet: ${e.message}` }); }
+        const present = b.attendance !== 'absent';
+        const r = rulesCache.engine.generate([{ row: 0, student_name: 'try', last_week_log: cell, is_present: present, book_collected: present || !!b.book, new_header_date: b.date }])[0];
+        return send(res, 200, { result: r.next_week_log, cyan: !!r.needs_color, novelMail: !!r.send_novel_mail });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/rules/propose') {
+        // A proposal is only a request: it never changes what the generator does. Claude builds and tests it, then it appears in the rule list.
+        const v = validateProposal(await readBody(req));
+        if (!v.ok) return send(res, 400, { error: v.errors.join('; ') });
+        if (readProposals().length >= 200) return send(res, 429, { error: 'too many proposals waiting; ask Claude to clear them' });
+        const rec = { id: `P${Date.now()}`, at: new Date().toISOString(), status: 'proposed', ...v.clean };
+        fs.mkdirSync(reportDir, { recursive: true }); fs.appendFileSync(proposalsFile, JSON.stringify(rec) + '\n');
+        return send(res, 201, rec);
       }
       const m = url.pathname.match(/^\/api\/runs\/([\w.-]+)$/);
       if (req.method === 'GET' && m) {

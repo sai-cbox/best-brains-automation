@@ -71,9 +71,25 @@ test('rules page data: plain when/then rules, and the curriculum comes from the 
   const d = await (await fetch(base + '/api/rules')).json();
   const items = d.rules.flatMap(g => g.items);
   assert.ok(items.length >= 40 && items.every(i => i.when && i.then));
-  assert.ok(items.every(i => !('examples' in i)));
+  assert.ok(items.filter(i => i.example).length >= 30, 'most rules carry a worked example');
   assert.ok(d.curriculum.levels.Maths.includes('0b') && d.curriculum.holidays.length > 0);
   assert.ok(d.openQuestions.length > 0);
+}));
+
+test('try a cell and propose a rule (fixed format, never changes the generator)', () => withServer(async base => {
+  const t = await post(base, '/api/rules/try', { cell: 'E JrBg A', attendance: 'present', date: '10/13/2026' }, null);
+  assert.strictEqual(t.status, 200);
+  assert.strictEqual((await t.json()).result, 'E JrBg B');
+  assert.strictEqual((await post(base, '/api/rules/try', { cell: '', date: '10/13/2026' }, null)).status, 400);
+  const bad = await post(base, '/api/rules/propose', { title: 'x' }, null);
+  assert.strictEqual(bad.status, 400);
+  const ok = { title: 'Spring break absent', group: '5. Holidays', when: 'Absent and next week is a holiday', then: 'Write both chapters', cell: 'E JrBg A', attendance: 'absent', date: '08/31/2026', expected: 'E JrBg A & B', by: 'Sai' };
+  const made = await post(base, '/api/rules/propose', ok, null);
+  assert.strictEqual(made.status, 201);
+  const d = await (await fetch(base + '/api/rules')).json();
+  assert.strictEqual(d.proposals.length, 1);
+  assert.strictEqual(d.proposals[0].status, 'proposed');
+  assert.ok(d.rules.flatMap(g => g.items).every(i => i.title !== 'Spring break absent'), 'a proposal never becomes a live rule by itself');
 }));
 
 test('live page data: stages are tracked, and the "n8n finished" ping ends the wait early', () => withServer(async (base, dir, srv) => {
